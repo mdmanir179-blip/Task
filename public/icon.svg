@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="50%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#1e1b4b" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <!-- Background Rounded Rect -->
+  <rect width="512" height="512" rx="128" fill="url(#brandGrad)" />
+  
+  <!-- Outer Ring Accent -->
+  <circle cx="256" cy="256" r="190" fill="none" stroke="#ffffff" stroke-width="8" stroke-dasharray="16 12" opacity="0.35" />
+
+  <!-- Clipboard / Task Symbol with Checkmark and Letters TBC -->
+  <g filter="url(#shadow)">
+    <!-- Clipboard Plate -->
+    <rect x="136" y="116" width="240" height="300" rx="32" fill="#ffffff" />
+    <!-- Clip Top -->
+    <rect x="206" y="92" width="100" height="36" rx="14" fill="#312e81" />
+    <circle cx="256" cy="110" r="10" fill="#ffffff" />
+    
+    <!-- TBC Header inside badge -->
+    <rect x="176" y="170" width="160" height="12" rx="6" fill="#e0e7ff" />
+    
+    <!-- Checklist items with checkmarks -->
+    <rect x="176" y="210" width="32" height="32" rx="8" fill="#10b981" />
+    <path d="M184 226 L190 232 L200 220" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="224" y="220" width="112" height="12" rx="6" fill="#cbd5e1" />
+    
+    <rect x="176" y="260" width="32" height="32" rx="8" fill="#6366f1" />
+    <path d="M184 276 L190 282 L200 270" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="224" y="270" width="90" height="12" rx="6" fill="#cbd5e1" />
+
+    <rect x="176" y="310" width="32" height="32" rx="8" fill="#f59e0b" />
+    <circle cx="192" cy="326" r="5" fill="#ffffff" />
+    <rect x="224" y="320" width="100" height="12" rx="6" fill="#cbd5e1" />
+
+    <!-- Small TBC Text badge -->
+    <rect x="176" y="360" width="160" height="28" rx="8" fill="#312e81" />
+    <text x="256" y="379" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="14" fill="#ffffff" text-anchor="middle" letter-spacing="2">TBC TASK</text>
+  </g>
+</svg>

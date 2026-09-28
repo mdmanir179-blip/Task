@@ -1,0 +1,6 @@
+{
+  "name": "TBC Task - Employee & Operations Management",
+  "description": "Multi-role operations tracker with real-time sync, PWA support, daily task evaluation, company personnel directory, and turnaround analytics for Backoffice, Printing, Warehouse, Admin, and Housekeeping.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
