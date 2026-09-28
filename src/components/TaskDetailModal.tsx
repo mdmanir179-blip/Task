@@ -108,14 +108,14 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {(isMaster || (isAdmin && task.status !== 'approved')) && (
+            {(isMaster || isAdmin || task.assignedById === currentUser.id) && task.status !== 'approved' && (
               <button
                 onClick={() => {
                   onClose();
                   onOpenEdit(task);
                 }}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition cursor-pointer"
-                title="Master Admin / Admin Edit"
+                title="Edit Task Details"
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 <span>Edit Task</span>

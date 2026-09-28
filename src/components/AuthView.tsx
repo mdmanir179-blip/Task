@@ -219,8 +219,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
       phone: cleanPhone,
       password: password,
       department: department,
-      role: 'employee',
-      designation: designation.trim() || `${DEPARTMENT_CONFIG[department].label} Executive`,
+      role: department === 'admin' ? 'admin' : 'employee',
+      designation: designation.trim() || `${DEPARTMENT_CONFIG[department].label} ${department === 'admin' ? 'Manager' : 'Staff'}`,
       photoUrl: photoUrl || undefined,
       isActive: true,
       createdAt: new Date().toISOString(),
@@ -490,10 +490,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     onChange={(e) => setDepartment(e.target.value as Department)}
                     className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer font-medium"
                   >
+                    <option value="admin">Admin (Can assign, verify & rate employee tasks)</option>
                     <option value="backoffice">Backoffice Department</option>
                     <option value="printing">Printing Department</option>
                     <option value="warehouse">Warehouse Staff Department</option>
-                    <option value="admin">Administration Department</option>
                     <option value="housekeeping">Housekeeping Department</option>
                   </select>
                 </div>

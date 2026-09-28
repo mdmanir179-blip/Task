@@ -100,15 +100,14 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
             </button>
           )}
 
-          {isAdmin && (
-            <button
-              onClick={onOpenCreate}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs shadow-md shadow-indigo-500/20 active:scale-95 transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Assign New Task</span>
-            </button>
-          )}
+          {/* All staff (Admin and Employees) can assign / add tasks */}
+          <button
+            onClick={onOpenCreate}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs shadow-md shadow-indigo-500/20 active:scale-95 transition cursor-pointer"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>Assign New Task</span>
+          </button>
         </div>
       </div>
 
@@ -410,12 +409,12 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
-                    {/* Master Admin Edit Button */}
-                    {isMaster && (
+                    {/* Edit Button: Master Admin, Admin, or the user who created the task */}
+                    {(isMaster || isAdmin || task.assignedById === currentUser.id) && (
                       <button
                         onClick={() => onOpenEdit(task)}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition cursor-pointer"
-                        title="Master Admin Edit"
+                        title="Edit Task Details"
                       >
                         <Edit className="w-3.5 h-3.5" />
                       </button>
