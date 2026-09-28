@@ -82,6 +82,7 @@ export const subscribeToSync = (callback: (data: { type: string; payload?: any }
 export const INITIAL_USERS: User[] = [
   {
     id: 'user_master',
+    employeeId: 'MASTER-001',
     name: 'Master Admin',
     phone: '01700000000',
     password: 'admin',
@@ -126,10 +127,7 @@ export function getCurrentUser(): User | null {
   try {
     const raw = localStorage.getItem(CURRENT_USER_KEY);
     if (!raw) {
-      // Default to Master Admin so administrator immediately has access
-      const defaultUser = getUsers()[0] || INITIAL_USERS[0];
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(defaultUser));
-      return defaultUser;
+      return null;
     }
     return JSON.parse(raw);
   } catch (e) {

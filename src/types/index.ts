@@ -4,12 +4,14 @@ export type UserRole = 'master_admin' | 'admin' | 'employee';
 
 export interface User {
   id: string;
+  employeeId?: string;
   name: string;
   phone: string;
   password?: string;
   department: Department;
   role: UserRole;
   designation: string;
+  photoUrl?: string;
   isActive: boolean;
   createdAt: string;
   avatarColor: string;

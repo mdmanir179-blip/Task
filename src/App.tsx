@@ -22,7 +22,8 @@ import {
   broadcastUpdate,
 } from './utils/storage';
 import { Navbar } from './components/Navbar';
-import { DemoSwitcher } from './components/DemoSwitcher';
+import { AuthView } from './components/AuthView';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { TaskBoard } from './components/TaskBoard';
 import { TaskDetailModal } from './components/TaskDetailModal';
 import { TaskFormModal } from './components/TaskFormModal';
@@ -31,7 +32,6 @@ import { CompanyDirectory } from './components/CompanyDirectory';
 import { ImportantForms } from './components/ImportantForms';
 import { EmployeeAnalytics } from './components/EmployeeAnalytics';
 import { UserManagement } from './components/UserManagement';
-import { AuthModal } from './components/AuthModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -70,7 +70,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'tasks' | 'directory' | 'forms' | 'analytics' | 'users'>('tasks');
 
   // Modal states
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -111,13 +110,6 @@ export default function App() {
     return unsubscribe;
   }, [showToast]);
 
-  // Handle User Switching
-  const handleSelectUser = (user: User) => {
-    setCurrentUser(user);
-    setCurrentUserState(user);
-    showToast(`Switched account to: ${user.name} (${user.role.toUpperCase()})`, 'info');
-  };
-
   const handleLogout = () => {
     setCurrentUser(null);
     setCurrentUserState(null);
@@ -127,8 +119,7 @@ export default function App() {
   const handleAuthSuccess = (user: User) => {
     setCurrentUser(user);
     setCurrentUserState(user);
-    setIsAuthOpen(false);
-    showToast(`Welcome back, ${user.name}!`, 'success');
+    showToast(`Welcome, ${user.name}!`, 'success');
   };
 
   // Task Management Handlers
@@ -425,6 +416,7 @@ export default function App() {
     );
     setImportantForms(updated);
     saveImportantForms(updated);
+    showToast('Form submission noted in system', 'success');
   };
 
   // User Management & Active/Inactive Toggle (Requirement 3)
@@ -465,22 +457,30 @@ export default function App() {
     total: tasks.length,
   };
 
+  // If user is not authenticated, show AuthView immediately upon clicking the app link
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+        <AuthView
+          onSuccess={handleAuthSuccess}
+          users={users}
+          setUsers={setUsers}
+        />
+        {/* Offline Status Indicator */}
+        <OfflineIndicator />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
-      {/* Role Switcher Banner */}
-      <DemoSwitcher
-        currentUser={currentUser}
-        onSelectUser={handleSelectUser}
-        users={users}
-      />
-
-      {/* Main App Navigation */}
+      {/* Main App Navigation (Header bar is clean without demo banner) */}
       <Navbar
         currentUser={currentUser}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onLogout={handleLogout}
-        onOpenLogin={() => setIsAuthOpen(true)}
+        onOpenLogin={() => {}}
         darkMode={darkMode}
         setDarkMode={setDarkMode}
         taskCounts={taskCounts}
@@ -508,98 +508,76 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6">
-        {currentUser ? (
-          <>
-            {activeTab === 'tasks' && (
-              <TaskBoard
-                tasks={tasks}
-                currentUser={currentUser}
-                onOpenCreate={() => {
-                  setEditingTask(null);
-                  setIsTaskFormOpen(true);
-                }}
-                onSelectTask={(task) => setSelectedTask(task)}
-                onOpenEvaluation={(task) => setEvaluatingTask(task)}
-                onOpenEdit={(task) => {
-                  setEditingTask(task);
-                  setIsTaskFormOpen(true);
-                }}
-              />
-            )}
+      {/* Main Content Area: pb-24 gives plenty of clearance for mobile fixed bottom menu */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8">
+        {activeTab === 'tasks' && (
+          <TaskBoard
+            tasks={tasks}
+            currentUser={currentUser}
+            onOpenCreate={() => {
+              setEditingTask(null);
+              setIsTaskFormOpen(true);
+            }}
+            onSelectTask={(task) => setSelectedTask(task)}
+            onOpenEvaluation={(task) => setEvaluatingTask(task)}
+            onOpenEdit={(task) => {
+              setEditingTask(task);
+              setIsTaskFormOpen(true);
+            }}
+          />
+        )}
 
-            {activeTab === 'directory' && (
-              <CompanyDirectory
-                persons={companyPersons}
-                currentUser={currentUser}
-                onAddPerson={handleAddPerson}
-                onEditPerson={handleEditPerson}
-                onDeletePerson={handleDeletePerson}
-              />
-            )}
+        {activeTab === 'directory' && (
+          <CompanyDirectory
+            persons={companyPersons}
+            currentUser={currentUser}
+            onAddPerson={handleAddPerson}
+            onEditPerson={handleEditPerson}
+            onDeletePerson={handleDeletePerson}
+          />
+        )}
 
-            {activeTab === 'forms' && (
-              <ImportantForms
-                forms={importantForms}
-                currentUser={currentUser}
-                onAddForm={handleAddForm}
-                onEditForm={handleEditForm}
-                onDeleteForm={handleDeleteForm}
-                onRecordSubmission={handleRecordFormSubmission}
-              />
-            )}
+        {activeTab === 'forms' && (
+          <ImportantForms
+            forms={importantForms}
+            currentUser={currentUser}
+            onAddForm={handleAddForm}
+            onEditForm={handleEditForm}
+            onDeleteForm={handleDeleteForm}
+            onRecordSubmission={handleRecordFormSubmission}
+          />
+        )}
 
-            {activeTab === 'analytics' && (
-              <EmployeeAnalytics
-                tasks={tasks}
-                users={users}
-                currentUser={currentUser}
-              />
-            )}
+        {activeTab === 'analytics' && (
+          <EmployeeAnalytics
+            tasks={tasks}
+            users={users}
+            currentUser={currentUser}
+          />
+        )}
 
-            {activeTab === 'users' && currentUser.role === 'master_admin' && (
-              <UserManagement
-                users={users}
-                currentUser={currentUser}
-                onToggleUserStatus={handleToggleUserStatus}
-                onUpdateUserRole={handleUpdateUserRole}
-              />
-            )}
-          </>
-        ) : (
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 text-center border border-slate-200 dark:border-slate-800 shadow-sm my-12 max-w-lg mx-auto">
-            <div className="w-16 h-16 mx-auto rounded-3xl bg-indigo-100 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-2xl mb-4">
-              TBC
-            </div>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white">
-              Welcome to TBC Task
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-              Log in with your registered mobile number and password to access your daily tasks and operational dashboard.
-            </p>
-            <button
-              onClick={() => setIsAuthOpen(true)}
-              className="mt-6 px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 active:scale-95 transition cursor-pointer"
-            >
-              Log In / Register
-            </button>
-          </div>
+        {activeTab === 'users' && currentUser.role === 'master_admin' && (
+          <UserManagement
+            users={users}
+            currentUser={currentUser}
+            onToggleUserStatus={handleToggleUserStatus}
+            onUpdateUserRole={handleUpdateUserRole}
+          />
         )}
       </main>
+
+      {/* Mobile Fixed Bottom Menu Navigation */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        currentUser={currentUser}
+        taskCounts={taskCounts}
+      />
 
       {/* Offline Status Pill */}
       <OfflineIndicator />
 
       {/* Modals */}
-      <AuthModal
-        isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
-        onSuccess={handleAuthSuccess}
-        users={users}
-        setUsers={setUsers}
-      />
-
       <TaskFormModal
         isOpen={isTaskFormOpen}
         onClose={() => {
@@ -609,14 +587,14 @@ export default function App() {
         onSave={handleSaveTask}
         initialTask={editingTask}
         users={users}
-        currentUser={currentUser || users[0]}
+        currentUser={currentUser}
       />
 
       <TaskDetailModal
         task={selectedTask}
         isOpen={!!selectedTask}
         onClose={() => setSelectedTask(null)}
-        currentUser={currentUser || users[0]}
+        currentUser={currentUser}
         onUpdateStatus={handleUpdateTaskStatus}
         onToggleChecklist={handleToggleChecklist}
         onOpenEvaluation={(t) => {
@@ -634,7 +612,7 @@ export default function App() {
         task={evaluatingTask}
         isOpen={!!evaluatingTask}
         onClose={() => setEvaluatingTask(null)}
-        currentUser={currentUser || users[0]}
+        currentUser={currentUser}
         onEvaluate={handleEvaluateTask}
       />
     </div>

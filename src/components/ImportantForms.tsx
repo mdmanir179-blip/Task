@@ -223,11 +223,7 @@ export const ImportantForms: React.FC<ImportantFormsProps> = ({
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => {
-                            if (confirm(`Are you sure you want to delete "${form.title}"?`)) {
-                              onDeleteForm(form.id);
-                            }
-                          }}
+                          onClick={() => onDeleteForm(form.id)}
                           className="p-1 rounded text-slate-400 hover:text-rose-600 transition cursor-pointer"
                           title="Delete Form"
                         >
@@ -270,7 +266,6 @@ export const ImportantForms: React.FC<ImportantFormsProps> = ({
                   <button
                     onClick={() => {
                       onRecordSubmission(form.id);
-                      alert('Submission recorded in the system.');
                     }}
                     className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-slate-600 dark:text-slate-300 hover:text-emerald-600 transition cursor-pointer"
                     title="Mark as filled"
