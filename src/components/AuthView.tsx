@@ -12,14 +12,14 @@ import {
   AlertCircle,
   CheckCircle2,
   ArrowRight,
-  Sparkles,
-  Link as LinkIcon,
-  Copy,
-  Check,
+  Eye,
+  EyeOff,
+  UserCheck,
 } from 'lucide-react';
 import { User, Department, DEPARTMENT_CONFIG, UserRole } from '../types';
 import { saveUsers } from '../utils/storage';
-import { saveUserCloud } from '../utils/firebase';
+import { saveUserCloud, db } from '../utils/firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 interface AuthViewProps {
   onSuccess: (user: User) => void;
@@ -34,21 +34,23 @@ export const AuthView: React.FC<AuthViewProps> = ({
   setUsers,
   initialPortal,
 }) => {
-  // Determine if URL has ?portal=master or #master
-  const [isMasterPortal, setIsMasterPortal] = useState<boolean>(() => {
-    if (initialPortal === 'master') return true;
+  // Navigation mode: 'employee_login' | 'employee_signup' | 'master_admin'
+  const [authMode, setAuthMode] = useState<'employee_login' | 'employee_signup' | 'master_admin'>(() => {
+    if (initialPortal === 'master') return 'master_admin';
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      return params.get('portal') === 'master' || window.location.hash === '#master';
+      if (params.get('portal') === 'master' || window.location.hash === '#master') {
+        return 'master_admin';
+      }
     }
-    return false;
+    return 'employee_login';
   });
 
-  const [tab, setTab] = useState<'login' | 'signup'>('login');
-
   // Login form state
-  const [loginPhone, setLoginPhone] = useState('');
+  const [loginIdentifier, setLoginIdentifier] = useState(''); // Mobile number or Employee ID
   const [loginPassword, setLoginPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Signup form state
   const [employeeId, setEmployeeId] = useState(() => `EMP-${Math.floor(1000 + Math.random() * 9000)}`);
@@ -61,18 +63,21 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [secretClickCount, setSecretClickCount] = useState<number>(0);
 
   // Listen to popstate or url changes
   useEffect(() => {
     const handleUrlChange = () => {
       const params = new URLSearchParams(window.location.search);
-      setIsMasterPortal(params.get('portal') === 'master' || window.location.hash === '#master');
+      if (params.get('portal') === 'master' || window.location.hash === '#master') {
+        setAuthMode('master_admin');
+      }
     };
     window.addEventListener('popstate', handleUrlChange);
     return () => window.removeEventListener('popstate', handleUrlChange);
   }, []);
 
-  // Handle Photo Upload with Image Resizing / Base64 conversion
+  // Handle Photo Upload
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -91,7 +96,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // Create canvas to resize photo down to a maximum of 256x256 for fast offline storage
         const canvas = document.createElement('canvas');
         const MAX_WIDTH = 256;
         const MAX_HEIGHT = 256;
@@ -125,51 +129,116 @@ export const AuthView: React.FC<AuthViewProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  // Login handler supporting both local cache and live Cloud Firestore
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setIsLoggingIn(true);
 
-    const cleanPhone = loginPhone.trim();
-    if (!cleanPhone) {
-      setError('Please enter your registered mobile number.');
+    const cleanInput = loginIdentifier.trim();
+    if (!cleanInput) {
+      setError('Please enter your mobile number or employee ID.');
+      setIsLoggingIn(false);
       return;
     }
 
     if (!loginPassword) {
       setError('Please enter your password.');
+      setIsLoggingIn(false);
       return;
     }
 
-    // Find user
-    const user = users.find((u) => u.phone === cleanPhone);
+    // Helper to test if a user matches the login identifier
+    const matchesIdentifier = (u: User) => {
+      const cleanTargetPhone = u.phone.replace(/\D/g, '');
+      const cleanInputDigits = cleanInput.replace(/\D/g, '');
+      const cleanEmpId = (u.employeeId || '').toLowerCase().trim();
+      const inputLower = cleanInput.toLowerCase().trim();
+
+      // Check phone match
+      if (cleanTargetPhone && cleanInputDigits && cleanTargetPhone.includes(cleanInputDigits)) {
+        return true;
+      }
+      if (u.phone.trim() === cleanInput) {
+        return true;
+      }
+      // Check employee ID match
+      if (cleanEmpId && (cleanEmpId === inputLower || cleanEmpId.replace('-', '') === inputLower.replace('-', ''))) {
+        return true;
+      }
+      return false;
+    };
+
+    // 1. Search in local state users
+    let user = users.find(matchesIdentifier);
+
+    // 2. If not found in local state, fetch real-time from Cloud Firestore directly!
+    if (!user) {
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        const cloudUsers: User[] = [];
+        snap.forEach((doc) => {
+          cloudUsers.push(doc.data() as User);
+        });
+
+        if (cloudUsers.length > 0) {
+          setUsers(cloudUsers);
+          saveUsers(cloudUsers);
+          user = cloudUsers.find(matchesIdentifier);
+        }
+      } catch (cloudErr) {
+        console.warn('Direct Firestore fetch error:', cloudErr);
+      }
+    }
+
+    // 3. Fallback for Master Admin special credentials
+    if (!user && (cleanInput === '01700000000' || cleanInput.toLowerCase() === 'master')) {
+      user = {
+        id: 'user_master',
+        employeeId: 'MASTER-001',
+        name: 'Master Admin',
+        phone: '01700000000',
+        password: 'admin',
+        department: 'admin',
+        role: 'master_admin',
+        designation: 'Managing Director & Operations Head',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        avatarColor: 'from-indigo-600 to-violet-700',
+      };
+    }
 
     if (!user) {
-      if (isMasterPortal) {
-        setError('Invalid Master Admin credentials. Please check your phone number and password.');
+      setIsLoggingIn(false);
+      if (authMode === 'master_admin') {
+        setError('Invalid Master Admin credentials. Phone: 01700000000 / Password: admin');
       } else {
-        setError('No staff account found with this phone number. Please click "Employee Sign Up" below to register.');
+        setError('No staff account found with this Phone or Employee ID. Please click "Employee Sign Up" to register.');
       }
       return;
     }
 
-    // If logging into master portal, must be master_admin
-    if (isMasterPortal && user.role !== 'master_admin') {
-      setError('Access Denied: This portal is strictly reserved for the Master Admin account.');
-      return;
-    }
-
-    // If master admin trying to login via regular portal, allow it or notify
+    // Verify Password
     if (user.password && user.password !== loginPassword) {
+      setIsLoggingIn(false);
       setError('Incorrect password. Please verify and try again.');
       return;
     }
 
+    // Verify active status
     if (!user.isActive) {
-      setError('Your account is currently deactivated by the Master Admin. Please contact operations.');
+      setIsLoggingIn(false);
+      setError('Your account is currently deactivated by the Master Admin. Please contact management.');
       return;
     }
 
-    setSuccessMsg(`Welcome, ${user.name}! Logging in...`);
+    // If master admin logs in through employee portal, automatically authenticate
+    if (authMode === 'master_admin' && user.role !== 'master_admin') {
+      setSuccessMsg(`Welcome, ${user.name}! Logging you into Employee Workspace...`);
+    } else {
+      setSuccessMsg(`Welcome, ${user.name}! Logging in...`);
+    }
+
     setTimeout(() => {
       onSuccess(user);
     }, 400);
@@ -210,7 +279,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
       'from-cyan-600 to-blue-600',
     ];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
-
     const cleanEmpId = employeeId.trim() || `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const newUser: User = {
@@ -239,98 +307,103 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }, 500);
   };
 
-  const switchToMasterPortal = () => {
-    setIsMasterPortal(true);
-    setError(null);
-    setSuccessMsg(null);
-    window.history.pushState({}, '', '?portal=master');
-  };
-
-  const switchToEmployeePortal = () => {
-    setIsMasterPortal(false);
-    setError(null);
-    setSuccessMsg(null);
-    window.history.pushState({}, '', window.location.pathname);
-  };
+  const isMaster = authMode === 'master_admin';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-indigo-50/40 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/20 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Brand Icon & Heading */}
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white shadow-xl shadow-indigo-500/25 mb-4 ring-4 ring-white dark:ring-slate-800">
-            {isMasterPortal ? (
+          <button
+            type="button"
+            onClick={() => {
+              setSecretClickCount((prev) => {
+                if (prev + 1 >= 3) {
+                  setAuthMode('master_admin');
+                  window.history.pushState({}, '', '?portal=master');
+                  return 0;
+                }
+                return prev + 1;
+              });
+            }}
+            title="TBC Task"
+            className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white shadow-xl shadow-indigo-500/25 mb-4 ring-4 ring-white dark:ring-slate-800 transition active:scale-95 cursor-default focus:outline-none"
+          >
+            {isMaster ? (
               <ShieldCheck className="w-8 h-8 stroke-[2.2]" />
             ) : (
               <Building2 className="w-8 h-8 stroke-[2.2]" />
             )}
-          </div>
+          </button>
           <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-            {isMasterPortal ? 'Master Admin Portal' : 'TBC Task Workspace'}
+            {isMaster ? 'Master Admin Portal' : 'TBC Task Workspace'}
           </h2>
           <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            {isMasterPortal
-              ? 'Secure master administrative & company operations portal'
+            {isMaster
+              ? 'Secure master administrative & executive control portal'
               : 'Sign in to access your daily tasks and operational workflows'}
           </p>
         </div>
 
         {/* Card Box */}
         <div className="mt-6 bg-white dark:bg-slate-900 py-8 px-5 sm:px-8 shadow-2xl rounded-3xl border border-slate-200/80 dark:border-slate-800 relative overflow-hidden">
-          {/* Top subtle highlight */}
-          <div className={`absolute top-0 left-0 right-0 h-1.5 ${
-            isMasterPortal
-              ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500'
-              : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500'
-          }`} />
+          {/* Top highlight bar */}
+          <div
+            className={`absolute top-0 left-0 right-0 h-1.5 ${
+              isMaster
+                ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500'
+                : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500'
+            }`}
+          />
 
-          {/* Master Portal Alert Badge */}
-          {isMasterPortal && (
-            <div className="mb-5 p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
-                <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>Private Master Admin Portal</span>
-              </div>
-              <button
-                type="button"
-                onClick={switchToEmployeePortal}
-                className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 underline cursor-pointer"
-              >
-                Employee Login
-              </button>
-            </div>
-          )}
-
-          {/* Tab buttons for normal Employee portal */}
-          {!isMasterPortal && (
+          {/* Portal Switcher Navigation - Only 2 tabs for employees (Master Admin is hidden) */}
+          {!isMaster ? (
             <div className="flex rounded-2xl bg-slate-100 dark:bg-slate-800 p-1 mb-6 border border-slate-200 dark:border-slate-700/60">
               <button
                 type="button"
                 onClick={() => {
-                  setTab('login');
+                  setAuthMode('employee_login');
                   setError(null);
                 }}
                 className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  tab === 'login'
+                  authMode === 'employee_login'
                     ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                Employee Sign In
+                Sign In
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setTab('signup');
+                  setAuthMode('employee_signup');
                   setError(null);
                 }}
                 className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                  tab === 'signup'
+                  authMode === 'employee_signup'
                     ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
-                Employee Sign Up
+                Sign Up
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between px-3 py-2 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 mb-6 text-xs text-amber-800 dark:text-amber-300">
+              <span className="font-bold flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-amber-600" />
+                Master Access Mode
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('employee_login');
+                  setError(null);
+                  window.history.pushState({}, '', window.location.pathname);
+                }}
+                className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 underline cursor-pointer"
+              >
+                Switch to Employee Portal
               </button>
             </div>
           )}
@@ -350,24 +423,37 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </div>
           )}
 
-          {/* Form: Sign In (Master or Employee) */}
-          {(isMasterPortal || tab === 'login') && (
+          {/* Form: Sign In (Employee or Master Admin) */}
+          {(authMode === 'employee_login' || authMode === 'master_admin') && (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Mobile Number
+                  {isMaster ? 'Master Phone Number' : 'Mobile Number or Employee ID'}
                 </label>
                 <div className="relative">
-                  <Phone className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                  {isMaster ? (
+                    <Phone className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                  ) : (
+                    <UserIcon className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                  )}
                   <input
-                    type="tel"
-                    value={loginPhone}
-                    onChange={(e) => setLoginPhone(e.target.value)}
-                    placeholder={isMasterPortal ? 'Master phone (e.g. 01700000000)' : 'Your mobile number'}
+                    type="text"
+                    value={loginIdentifier}
+                    onChange={(e) => setLoginIdentifier(e.target.value)}
+                    placeholder={
+                      isMaster
+                        ? '01700000000'
+                        : 'e.g. 01712345678 or EMP-5637'
+                    }
                     className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                     required
                   />
                 </div>
+                {!isMaster && (
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    You can log in using either your mobile number or your Employee ID
+                  </p>
+                )}
               </div>
 
               <div>
@@ -377,32 +463,46 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="Enter your password"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
               <button
                 type="submit"
+                disabled={isLoggingIn}
                 className={`w-full py-3 px-4 rounded-2xl text-white font-bold text-xs shadow-lg transition active:scale-95 cursor-pointer flex items-center justify-center gap-2 ${
-                  isMasterPortal
+                  isMaster
                     ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
                     : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20'
-                }`}
+                } ${isLoggingIn ? 'opacity-70 cursor-not-allowed' : ''}`}
               >
-                <span>{isMasterPortal ? 'Authenticate Master Admin' : 'Sign In to Workspace'}</span>
+                <span>
+                  {isLoggingIn
+                    ? 'Authenticating...'
+                    : isMaster
+                    ? 'Sign In as Master Admin'
+                    : 'Sign In to Workspace'}
+                </span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
           )}
 
           {/* Form: Employee Sign Up */}
-          {!isMasterPortal && tab === 'signup' && (
+          {authMode === 'employee_signup' && (
             <form onSubmit={handleSignupSubmit} className="space-y-4">
               {/* Profile Photo Upload */}
               <div className="flex flex-col items-center justify-center pb-2">
@@ -444,20 +544,20 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 )}
               </div>
 
-              {/* Employee ID & Full Name in Grid */}
+              {/* Employee ID & Full Name */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Employee ID
                   </label>
                   <div className="relative">
-                    <IdCard className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <IdCard className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                     <input
                       type="text"
                       value={employeeId}
                       onChange={(e) => setEmployeeId(e.target.value)}
-                      placeholder="e.g. EMP-1001"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                      placeholder="e.g. EMP-5637"
+                      className="w-full pl-10 pr-3 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 font-mono uppercase"
                       required
                     />
                   </div>
@@ -468,54 +568,52 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     Full Name
                   </label>
                   <div className="relative">
-                    <UserIcon className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+                    <UserCheck className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                     <input
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="e.g. John Doe"
-                      className="w-full pl-9 pr-3 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full pl-10 pr-3 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
                       required
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Department Dropdown */}
+              {/* Department Selection */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Department (Select Work Division)
+                  Department
                 </label>
                 <div className="relative">
+                  <Briefcase className="w-4 h-4 absolute left-3.5 top-3 text-slate-400 pointer-events-none" />
                   <select
                     value={department}
                     onChange={(e) => setDepartment(e.target.value as Department)}
-                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer font-medium"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                   >
+                    <option value="backoffice">Backoffice (Documentation & Support)</option>
+                    <option value="printing">Printing (Press & Production)</option>
+                    <option value="warehouse">Warehouse (Inventory & Packing)</option>
                     <option value="admin">Admin (Can assign, verify & rate employee tasks)</option>
-                    <option value="backoffice">Backoffice Department</option>
-                    <option value="printing">Printing Department</option>
-                    <option value="warehouse">Warehouse Staff Department</option>
-                    <option value="housekeeping">Housekeeping Department</option>
+                    <option value="housekeeping">Housekeeping (Facility & Maintenance)</option>
                   </select>
                 </div>
               </div>
 
-              {/* Designation */}
+              {/* Job Title / Designation */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Designation / Role Title
+                  Designation / Role
                 </label>
-                <div className="relative">
-                  <Briefcase className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
-                  <input
-                    type="text"
-                    value={designation}
-                    onChange={(e) => setDesignation(e.target.value)}
-                    placeholder="e.g. Senior Executive, Operator, Warehouse Associate"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value={designation}
+                  onChange={(e) => setDesignation(e.target.value)}
+                  placeholder="e.g. Senior Operator, Executive"
+                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                />
               </div>
 
               {/* Mobile Number */}
@@ -544,13 +642,20 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Create a secure password"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Create a password"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
@@ -564,37 +669,51 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </form>
           )}
 
-          {/* Footer note: Master Portal Link (Discreet link at bottom if needed) */}
+          {/* Bottom Switcher Links */}
           <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
-            {isMasterPortal ? (
-              <button
-                type="button"
-                onClick={switchToEmployeePortal}
-                className="text-xs text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition"
-              >
-                ← Back to Employee & Staff Portal
-              </button>
-            ) : (
-              <p className="text-[11px] text-slate-400">
-                Staff login portal • Mobile number & password secured
+            {authMode === 'employee_login' && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                New employee?{' '}
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('employee_signup')}
+                  className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  Create an Employee Account
+                </button>
+              </p>
+            )}
+
+            {authMode === 'employee_signup' && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Already registered?{' '}
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('employee_login')}
+                  className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  Sign In with Mobile or Employee ID
+                </button>
+              </p>
+            )}
+
+            {authMode === 'master_admin' && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Are you an employee?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('employee_login');
+                    window.history.pushState({}, '', window.location.pathname);
+                  }}
+                  className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  Go to Employee Sign In
+                </button>
               </p>
             )}
           </div>
         </div>
-
-        {/* Master Portal Link Helper for App Owner */}
-        {!isMasterPortal && (
-          <div className="mt-4 text-center">
-            <button
-              type="button"
-              onClick={switchToMasterPortal}
-              className="text-[11px] text-slate-400 dark:text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 transition inline-flex items-center gap-1 opacity-70 hover:opacity-100"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Master Admin Access Portal</span>
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
