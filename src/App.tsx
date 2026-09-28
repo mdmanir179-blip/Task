@@ -34,6 +34,7 @@ import {
   subscribeImportantForms,
   saveImportantFormCloud,
   deleteImportantFormCloud,
+  forceSyncAllToCloud,
 } from './utils/firebase';
 import { Navbar } from './components/Navbar';
 import { AuthView } from './components/AuthView';
@@ -103,12 +104,13 @@ export default function App() {
   useEffect(() => {
     testConnection().catch(console.error);
 
+    // Initial background push to sync any local tasks to cloud
+    forceSyncAllToCloud().catch(console.error);
+
     // 1. Subscribe to Cloud Tasks in real-time
     const unsubTasks = subscribeTasks((cloudTasks) => {
-      if (cloudTasks && cloudTasks.length > 0) {
-        setTasks(cloudTasks);
-        saveTasks(cloudTasks);
-      }
+      setTasks(cloudTasks);
+      saveTasks(cloudTasks);
     });
 
     // 2. Subscribe to Cloud Users in real-time
@@ -169,6 +171,12 @@ export default function App() {
     setCurrentUser(null);
     setCurrentUserState(null);
     showToast('Successfully logged out.', 'info');
+  };
+
+  const handleForceSync = async () => {
+    showToast('Syncing all tasks with Cloud...', 'info');
+    await forceSyncAllToCloud();
+    showToast('All tasks & accounts synced successfully!', 'success');
   };
 
   const handleAuthSuccess = (user: User) => {
@@ -611,6 +619,7 @@ export default function App() {
         darkMode={darkMode}
         setDarkMode={setDarkMode}
         taskCounts={taskCounts}
+        onForceSync={handleForceSync}
       />
 
       {/* Toast Alert Banner */}

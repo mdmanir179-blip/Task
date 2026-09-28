@@ -43,7 +43,14 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
     return tasks.filter((t) => {
       if (selectedDept !== 'all' && t.department !== selectedDept) return false;
       if (selectedStatus !== 'all' && t.status !== selectedStatus) return false;
-      if (onlyMyTasks && t.assignedToId !== currentUser.id) return false;
+      if (onlyMyTasks) {
+        const isMatchId = t.assignedToId === currentUser.id;
+        const isMatchName = t.assignedToName && (
+          t.assignedToName.toLowerCase().includes(currentUser.name.toLowerCase()) ||
+          currentUser.name.toLowerCase().includes(t.assignedToName.toLowerCase())
+        );
+        if (!isMatchId && !isMatchName) return false;
+      }
 
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();

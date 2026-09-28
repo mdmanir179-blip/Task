@@ -32,6 +32,7 @@ interface NavbarProps {
     submitted: number;
     total: number;
   };
+  onForceSync?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -43,6 +44,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   darkMode,
   setDarkMode,
   taskCounts,
+  onForceSync,
 }) => {
   const isMasterAdmin = currentUser?.role === 'master_admin';
   const isAdmin = currentUser?.role === 'admin' || isMasterAdmin;
@@ -181,14 +183,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {/* Live Sync Indicator */}
-            <div
-              className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
-              title="Real-time multi-tab & device synchronization is active"
+            {/* Live Sync Indicator / Trigger */}
+            <button
+              onClick={onForceSync}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 hover:text-emerald-600 transition cursor-pointer"
+              title="Real-time multi-tab & device synchronization. Click to sync instantly!"
             >
               <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
               <span>Live Sync</span>
-            </div>
+            </button>
 
             {/* PWA Install Button */}
             <PWAInstallButton />

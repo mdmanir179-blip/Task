@@ -10,9 +10,19 @@ import {
   getDocFromServer,
   Unsubscribe,
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
 import { User, Task, CompanyPerson, ImportantForm } from '../types';
-import { INITIAL_USERS } from './storage';
+import { INITIAL_USERS, getTasks, saveTasks, getUsers, saveUsers, getCompanyPersons, saveCompanyPersons, getImportantForms, saveImportantForms } from './storage';
+
+// Embedded production Firebase configuration with environment variable fallbacks for Vercel
+export const firebaseConfig = {
+  projectId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || 'quaint-mantis-9mn89',
+  appId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || '1:85763678264:web:79bfc40c7aae61053286cd',
+  apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || 'AIzaSyBZS4_TqT9dmzROxsvSI-2A6OdfWj4vp7E',
+  authDomain: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || 'quaint-mantis-9mn89.firebaseapp.com',
+  firestoreDatabaseId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID) || 'ai-studio-tbctaskemployeeo-c127f671-8c6f-4691-ac2b-f5cbf2d55006',
+  storageBucket: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || 'quaint-mantis-9mn89.firebasestorage.app',
+  messagingSenderId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || '85763678264',
+};
 
 // Initialize Firebase App singleton
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -29,10 +39,10 @@ const TASKS_COLLECTION = 'tasks';
 const PERSONS_COLLECTION = 'companyPersons';
 const FORMS_COLLECTION = 'importantForms';
 
-// Test connection on boot as recommended by Firebase skill
+// Test connection on boot
 export async function testConnection(): Promise<boolean> {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    await getDocFromServer(doc(db, 'tasks', 'connection-health-check'));
     return true;
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
@@ -47,12 +57,15 @@ export function subscribeUsers(onUpdate: (users: User[]) => void): Unsubscribe {
   const colRef = collection(db, USERS_COLLECTION);
   return onSnapshot(
     colRef,
-    (snapshot) => {
+    async (snapshot) => {
       if (snapshot.empty) {
-        // Seed default Root Master Admin if collection is brand new
-        const rootAdmin = INITIAL_USERS[0];
-        saveUserCloud(rootAdmin).catch(console.error);
-        onUpdate(INITIAL_USERS);
+        // Seed default Root Master Admin and any local registered users
+        const localUsers = getUsers();
+        const usersToSeed = localUsers.length > 0 ? localUsers : INITIAL_USERS;
+        for (const u of usersToSeed) {
+          await saveUserCloud(u);
+        }
+        onUpdate(usersToSeed);
         return;
       }
 
@@ -61,11 +74,20 @@ export function subscribeUsers(onUpdate: (users: User[]) => void): Unsubscribe {
         cloudUsers.push(docSnap.data() as User);
       });
 
-      // Ensure Root Master Admin always exists in the list
+      // Ensure Root Master Admin is always in the list
       const hasMaster = cloudUsers.some((u) => u.phone === '01700000000' || u.role === 'master_admin');
       if (!hasMaster) {
         saveUserCloud(INITIAL_USERS[0]).catch(console.error);
         cloudUsers.unshift(INITIAL_USERS[0]);
+      }
+
+      // Check if local users exist that are missing in cloud (e.g. signed up offline)
+      const localUsers = getUsers();
+      for (const lu of localUsers) {
+        if (!cloudUsers.some((cu) => cu.id === lu.id || cu.phone === lu.phone)) {
+          saveUserCloud(lu).catch(console.error);
+          cloudUsers.push(lu);
+        }
       }
 
       onUpdate(cloudUsers);
@@ -78,7 +100,8 @@ export function subscribeUsers(onUpdate: (users: User[]) => void): Unsubscribe {
 
 export async function saveUserCloud(user: User): Promise<void> {
   try {
-    await setDoc(doc(db, USERS_COLLECTION, user.id), user, { merge: true });
+    const cleanUser = JSON.parse(JSON.stringify(user));
+    await setDoc(doc(db, USERS_COLLECTION, user.id), cleanUser, { merge: true });
   } catch (e) {
     console.error('Failed to save user to cloud:', e);
   }
@@ -89,11 +112,40 @@ export function subscribeTasks(onUpdate: (tasks: Task[]) => void): Unsubscribe {
   const colRef = collection(db, TASKS_COLLECTION);
   return onSnapshot(
     colRef,
-    (snapshot) => {
+    async (snapshot) => {
+      if (snapshot.empty) {
+        // If cloud is empty, check if this browser has local tasks to push
+        const localTasks = getTasks();
+        if (localTasks && localTasks.length > 0) {
+          console.log('[Cloud Sync] Auto-migrating local tasks to Firestore:', localTasks.length);
+          for (const t of localTasks) {
+            await saveTaskCloud(t);
+          }
+          onUpdate(localTasks);
+          return;
+        }
+        onUpdate([]);
+        return;
+      }
+
       const cloudTasks: Task[] = [];
       snapshot.forEach((docSnap) => {
-        cloudTasks.push(docSnap.data() as Task);
+        const data = docSnap.data() as Task;
+        // Ignore test connection check doc
+        if (docSnap.id !== 'connection-health-check') {
+          cloudTasks.push(data);
+        }
       });
+
+      // Automatic bi-directional sync: if local storage has tasks missing in cloud, upload them!
+      const localTasks = getTasks();
+      for (const lt of localTasks) {
+        if (lt.id !== 'connection-health-check' && !cloudTasks.some((ct) => ct.id === lt.id)) {
+          console.log('[Cloud Sync] Uploading missing task to Firestore:', lt.title);
+          saveTaskCloud(lt).catch(console.error);
+          cloudTasks.push(lt);
+        }
+      }
 
       // Sort newest tasks first
       cloudTasks.sort(
@@ -110,7 +162,6 @@ export function subscribeTasks(onUpdate: (tasks: Task[]) => void): Unsubscribe {
 
 export async function saveTaskCloud(task: Task): Promise<void> {
   try {
-    // Sanitize undefined fields for Firestore
     const cleanTask = JSON.parse(JSON.stringify(task));
     await setDoc(doc(db, TASKS_COLLECTION, task.id), cleanTask, { merge: true });
   } catch (e) {
@@ -133,11 +184,32 @@ export function subscribeCompanyPersons(
   const colRef = collection(db, PERSONS_COLLECTION);
   return onSnapshot(
     colRef,
-    (snapshot) => {
+    async (snapshot) => {
+      if (snapshot.empty) {
+        const localPersons = getCompanyPersons();
+        if (localPersons.length > 0) {
+          for (const p of localPersons) {
+            await saveCompanyPersonCloud(p);
+          }
+          onUpdate(localPersons);
+          return;
+        }
+      }
+
       const cloudPersons: CompanyPerson[] = [];
       snapshot.forEach((docSnap) => {
         cloudPersons.push(docSnap.data() as CompanyPerson);
       });
+
+      // Sync local missing
+      const localPersons = getCompanyPersons();
+      for (const lp of localPersons) {
+        if (!cloudPersons.some((cp) => cp.id === lp.id)) {
+          saveCompanyPersonCloud(lp).catch(console.error);
+          cloudPersons.push(lp);
+        }
+      }
+
       onUpdate(cloudPersons);
     },
     (err) => {
@@ -170,11 +242,32 @@ export function subscribeImportantForms(
   const colRef = collection(db, FORMS_COLLECTION);
   return onSnapshot(
     colRef,
-    (snapshot) => {
+    async (snapshot) => {
+      if (snapshot.empty) {
+        const localForms = getImportantForms();
+        if (localForms.length > 0) {
+          for (const f of localForms) {
+            await saveImportantFormCloud(f);
+          }
+          onUpdate(localForms);
+          return;
+        }
+      }
+
       const cloudForms: ImportantForm[] = [];
       snapshot.forEach((docSnap) => {
         cloudForms.push(docSnap.data() as ImportantForm);
       });
+
+      // Sync local missing
+      const localForms = getImportantForms();
+      for (const lf of localForms) {
+        if (!cloudForms.some((cf) => cf.id === lf.id)) {
+          saveImportantFormCloud(lf).catch(console.error);
+          cloudForms.push(lf);
+        }
+      }
+
       cloudForms.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
@@ -200,5 +293,30 @@ export async function deleteImportantFormCloud(formId: string): Promise<void> {
     await deleteDoc(doc(db, FORMS_COLLECTION, formId));
   } catch (e) {
     console.error('Failed to delete form from cloud:', e);
+  }
+}
+
+// Force immediate full sync
+export async function forceSyncAllToCloud(): Promise<void> {
+  try {
+    const localTasks = getTasks();
+    for (const t of localTasks) {
+      await saveTaskCloud(t);
+    }
+    const localUsers = getUsers();
+    for (const u of localUsers) {
+      await saveUserCloud(u);
+    }
+    const localPersons = getCompanyPersons();
+    for (const p of localPersons) {
+      await saveCompanyPersonCloud(p);
+    }
+    const localForms = getImportantForms();
+    for (const f of localForms) {
+      await saveImportantFormCloud(f);
+    }
+    console.log('[Cloud Sync] Full manual sync completed successfully!');
+  } catch (err) {
+    console.error('[Cloud Sync] Error during manual sync:', err);
   }
 }
