@@ -1,0 +1,106 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role and department credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "password": { "type": "string" },
+        "department": { "type": "string" },
+        "role": { "type": "string" },
+        "designation": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "avatarColor": { "type": "string" }
+      },
+      "required": ["id", "name", "phone", "department", "role", "isActive"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Daily operational task with status and evaluation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "department": { "type": "string" },
+        "assignedToId": { "type": "string" },
+        "assignedToName": { "type": "string" },
+        "assignedById": { "type": "string" },
+        "assignedByName": { "type": "string" },
+        "assignedByRole": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "dueTime": { "type": "string" },
+        "priority": { "type": "string" },
+        "status": { "type": "string" },
+        "checklist": { "type": "array" },
+        "submittedAt": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "turnaroundDays": { "type": "number" },
+        "turnaroundHours": { "type": "number" },
+        "rating": { "type": "number" },
+        "adminComment": { "type": "string" },
+        "history": { "type": "array" }
+      },
+      "required": ["id", "title", "department", "assignedToId", "status", "createdAt"]
+    },
+    "CompanyPerson": {
+      "title": "CompanyPerson",
+      "description": "Contact person in the company directory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "department": { "type": "string" },
+        "designation": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "notes": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["id", "name", "department", "phone"]
+    },
+    "ImportantForm": {
+      "title": "ImportantForm",
+      "description": "Operational Google form or checklist link",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "url": { "type": "string" },
+        "isMandatory": { "type": "boolean" },
+        "addedByName": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "submissionsCount": { "type": "number" }
+      },
+      "required": ["id", "title", "url", "category"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "entity": "User",
+      "path": "/users/{userId}"
+    },
+    "tasks": {
+      "entity": "Task",
+      "path": "/tasks/{taskId}"
+    },
+    "companyPersons": {
+      "entity": "CompanyPerson",
+      "path": "/companyPersons/{personId}"
+    },
+    "importantForms": {
+      "entity": "ImportantForm",
+      "path": "/importantForms/{formId}"
+    }
+  }
+}

@@ -21,6 +21,20 @@ import {
   subscribeToSync,
   broadcastUpdate,
 } from './utils/storage';
+import {
+  testConnection,
+  subscribeTasks,
+  saveTaskCloud,
+  deleteTaskCloud,
+  subscribeUsers,
+  saveUserCloud,
+  subscribeCompanyPersons,
+  saveCompanyPersonCloud,
+  deleteCompanyPersonCloud,
+  subscribeImportantForms,
+  saveImportantFormCloud,
+  deleteImportantFormCloud,
+} from './utils/firebase';
 import { Navbar } from './components/Navbar';
 import { AuthView } from './components/AuthView';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -59,7 +73,7 @@ export default function App() {
     }
   }, [darkMode]);
 
-  // Main data states
+  // Main data states initialized from fast local cache
   const [users, setUsers] = useState<User[]>(getUsers);
   const [currentUser, setCurrentUserState] = useState<User | null>(getCurrentUser);
   const [tasks, setTasks] = useState<Task[]>(getTasks);
@@ -85,29 +99,70 @@ export default function App() {
     }, 4000);
   }, []);
 
-  // Real-time synchronization subscriber across tabs & devices
+  // Multi-Device & Cross-Browser Real-Time Synchronization via Firebase Cloud Firestore
   useEffect(() => {
-    const unsubscribe = subscribeToSync((event) => {
-      // Reload states from storage
-      setUsers(getUsers());
-      setTasks(getTasks());
-      setCompanyPersons(getCompanyPersons());
-      setImportantForms(getImportantForms());
+    testConnection().catch(console.error);
 
-      const currentFromStorage = getCurrentUser();
-      if (currentFromStorage) {
-        // Refresh permissions if user was modified
-        const freshUser = getUsers().find((u) => u.id === currentFromStorage.id);
-        if (freshUser) {
-          if (!freshUser.isActive) {
-            showToast('Your account has been deactivated by Master Admin', 'alert');
+    // 1. Subscribe to Cloud Tasks in real-time
+    const unsubTasks = subscribeTasks((cloudTasks) => {
+      if (cloudTasks && cloudTasks.length > 0) {
+        setTasks(cloudTasks);
+        saveTasks(cloudTasks);
+      }
+    });
+
+    // 2. Subscribe to Cloud Users in real-time
+    const unsubUsers = subscribeUsers((cloudUsers) => {
+      if (cloudUsers && cloudUsers.length > 0) {
+        setUsers(cloudUsers);
+        saveUsers(cloudUsers);
+
+        // Keep logged-in user profile synced with cloud
+        const currentStored = getCurrentUser();
+        if (currentStored) {
+          const fresh = cloudUsers.find((u) => u.id === currentStored.id || u.phone === currentStored.phone);
+          if (fresh) {
+            if (!fresh.isActive && currentStored.isActive) {
+              showToast('Your account was deactivated by Master Admin', 'alert');
+            }
+            setCurrentUserState(fresh);
+            setCurrentUser(fresh);
           }
-          setCurrentUserState(freshUser);
         }
       }
     });
 
-    return unsubscribe;
+    // 3. Subscribe to Company Directory
+    const unsubPersons = subscribeCompanyPersons((cloudPersons) => {
+      if (cloudPersons) {
+        setCompanyPersons(cloudPersons);
+        saveCompanyPersons(cloudPersons);
+      }
+    });
+
+    // 4. Subscribe to Important Forms
+    const unsubForms = subscribeImportantForms((cloudForms) => {
+      if (cloudForms) {
+        setImportantForms(cloudForms);
+        saveImportantForms(cloudForms);
+      }
+    });
+
+    // 5. Local Broadcast Channel sync
+    const unsubLocal = subscribeToSync(() => {
+      setUsers(getUsers());
+      setTasks(getTasks());
+      setCompanyPersons(getCompanyPersons());
+      setImportantForms(getImportantForms());
+    });
+
+    return () => {
+      unsubTasks();
+      unsubUsers();
+      unsubPersons();
+      unsubForms();
+      unsubLocal();
+    };
   }, [showToast]);
 
   const handleLogout = () => {
@@ -119,16 +174,20 @@ export default function App() {
   const handleAuthSuccess = (user: User) => {
     setCurrentUser(user);
     setCurrentUserState(user);
+    // Sync user to cloud
+    saveUserCloud(user).catch(console.error);
     showToast(`Welcome, ${user.name}!`, 'success');
   };
 
-  // Task Management Handlers
+  // Task Management Handlers: Cloud Sync Enabled
   const handleSaveTask = (taskData: Partial<Task>) => {
     if (!currentUser) return;
 
     if (taskData.id) {
-      // Editing existing task (Requirement 3 & 4)
+      // Editing existing task
       const now = new Date().toISOString();
+      let updatedTaskObj: Task | null = null;
+
       const updated = tasks.map((t) => {
         if (t.id === taskData.id) {
           const historyEntry = {
@@ -139,20 +198,24 @@ export default function App() {
             actorRole: currentUser.role,
           };
 
-          return {
+          updatedTaskObj = {
             ...t,
             ...taskData,
             history: [historyEntry, ...(t.history || [])],
           } as Task;
+          return updatedTaskObj;
         }
         return t;
       });
 
       setTasks(updated);
       saveTasks(updated);
-      showToast('Task details successfully updated', 'success');
+      if (updatedTaskObj) {
+        saveTaskCloud(updatedTaskObj).catch(console.error);
+      }
+      showToast('Task details successfully updated across all browsers', 'success');
     } else {
-      // Creating new task (Requirement 1 & 4)
+      // Creating new task
       const now = new Date().toISOString();
       const newTask: Task = {
         ...(taskData as any),
@@ -176,7 +239,9 @@ export default function App() {
       const updated = [newTask, ...tasks];
       setTasks(updated);
       saveTasks(updated);
-      showToast(`New task created and assigned to ${newTask.assignedToName}`, 'success');
+      // Immediately push to Firebase Cloud Firestore for other browsers & devices
+      saveTaskCloud(newTask).catch(console.error);
+      showToast(`New task assigned to ${newTask.assignedToName} and synced to cloud`, 'success');
     }
 
     setIsTaskFormOpen(false);
@@ -187,6 +252,8 @@ export default function App() {
     if (!currentUser) return;
 
     const now = new Date();
+    let updatedTaskObj: Task | null = null;
+
     const updated = tasks.map((t) => {
       if (t.id === taskId) {
         const historyItem = {
@@ -203,13 +270,13 @@ export default function App() {
         let turnaroundHours = t.turnaroundHours;
 
         if (newStatus === 'submitted' && !t.submittedAt) {
-          // Employee submitted for verification
-          return {
+          updatedTaskObj = {
             ...t,
             status: newStatus,
             submittedAt: now.toISOString(),
             history: [historyItem, ...(t.history || [])],
           };
+          return updatedTaskObj;
         }
 
         if (newStatus === 'approved') {
@@ -220,7 +287,7 @@ export default function App() {
           turnaroundDays = Math.max(0.1, Number((turnaroundHours / 24).toFixed(1)));
         }
 
-        return {
+        updatedTaskObj = {
           ...t,
           status: newStatus,
           completedAt,
@@ -228,39 +295,48 @@ export default function App() {
           turnaroundHours,
           history: [historyItem, ...(t.history || [])],
         };
+        return updatedTaskObj;
       }
       return t;
     });
 
     setTasks(updated);
     saveTasks(updated);
+    if (updatedTaskObj) {
+      saveTaskCloud(updatedTaskObj).catch(console.error);
+    }
 
     // Keep selected task updated
     const fresh = updated.find((t) => t.id === taskId);
     if (fresh) setSelectedTask(fresh);
 
-    showToast('Task status updated successfully', 'success');
+    showToast('Task status updated & synced to cloud', 'success');
   };
 
   const handleToggleChecklist = (taskId: string, checklistId: string) => {
+    let targetTask: Task | null = null;
     const updated = tasks.map((t) => {
       if (t.id === taskId) {
         const newChecklist = t.checklist.map((item) =>
           item.id === checklistId ? { ...item, done: !item.done } : item
         );
-        return { ...t, checklist: newChecklist };
+        targetTask = { ...t, checklist: newChecklist };
+        return targetTask;
       }
       return t;
     });
 
     setTasks(updated);
     saveTasks(updated);
+    if (targetTask) {
+      saveTaskCloud(targetTask).catch(console.error);
+    }
 
     const fresh = updated.find((t) => t.id === taskId);
     if (fresh) setSelectedTask(fresh);
   };
 
-  // Evaluation & Rating Handler (Requirement 4 & 9)
+  // Evaluation & Rating Handler
   const handleEvaluateTask = (
     taskId: string,
     decision: 'approved' | 'rejected',
@@ -270,9 +346,10 @@ export default function App() {
     if (!currentUser) return;
 
     const now = new Date();
+    let evaluatedTaskObj: Task | null = null;
+
     const updated = tasks.map((t) => {
       if (t.id === taskId) {
-        // Calculate Turnaround Days & Hours
         const startTime = new Date(t.createdAt).getTime();
         const endTime = now.getTime();
         const diffHours = Number(((endTime - startTime) / (1000 * 60 * 60)).toFixed(1));
@@ -292,7 +369,7 @@ export default function App() {
           comment: adminComment,
         };
 
-        return {
+        evaluatedTaskObj = {
           ...t,
           status: decision === 'approved' ? 'approved' : 'rejected',
           completedAt: decision === 'approved' ? now.toISOString() : undefined,
@@ -302,25 +379,29 @@ export default function App() {
           adminComment: adminComment.trim(),
           history: [historyItem, ...(t.history || [])],
         } as Task;
+        return evaluatedTaskObj;
       }
       return t;
     });
 
     setTasks(updated);
     saveTasks(updated);
+    if (evaluatedTaskObj) {
+      saveTaskCloud(evaluatedTaskObj).catch(console.error);
+    }
 
     const fresh = updated.find((t) => t.id === taskId);
     if (fresh) setSelectedTask(fresh);
 
     showToast(
       decision === 'approved'
-        ? `Task approved and ${rating}-star rating recorded!`
-        : 'Task returned for revision.',
+        ? `Task approved & rating synced to cloud!`
+        : 'Task revision request synced to cloud.',
       'success'
     );
   };
 
-  // Company Personnel Handlers (Requirement 5)
+  // Company Personnel Handlers
   const handleAddPerson = (
     personData: Omit<CompanyPerson, 'id' | 'updatedAt' | 'updatedBy'>
   ) => {
@@ -339,26 +420,33 @@ export default function App() {
     const updated = [newPerson, ...companyPersons];
     setCompanyPersons(updated);
     saveCompanyPersons(updated);
-    showToast('Contact person added to Company Directory', 'success');
+    saveCompanyPersonCloud(newPerson).catch(console.error);
+    showToast('Contact person added and synced to cloud', 'success');
   };
 
   const handleEditPerson = (id: string, personData: Partial<CompanyPerson>) => {
     if (!currentUser || currentUser.role !== 'master_admin') return;
 
-    const updated = companyPersons.map((p) =>
-      p.id === id
-        ? {
-            ...p,
-            ...personData,
-            updatedAt: new Date().toISOString(),
-            updatedBy: currentUser.name,
-          }
-        : p
-    );
+    let targetPerson: CompanyPerson | null = null;
+    const updated = companyPersons.map((p) => {
+      if (p.id === id) {
+        targetPerson = {
+          ...p,
+          ...personData,
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser.name,
+        };
+        return targetPerson;
+      }
+      return p;
+    });
 
     setCompanyPersons(updated);
     saveCompanyPersons(updated);
-    showToast('Personnel info updated successfully', 'success');
+    if (targetPerson) {
+      saveCompanyPersonCloud(targetPerson).catch(console.error);
+    }
+    showToast('Personnel info updated across all devices', 'success');
   };
 
   const handleDeletePerson = (id: string) => {
@@ -367,10 +455,11 @@ export default function App() {
     const updated = companyPersons.filter((p) => p.id !== id);
     setCompanyPersons(updated);
     saveCompanyPersons(updated);
+    deleteCompanyPersonCloud(id).catch(console.error);
     showToast('Contact person removed from directory', 'info');
   };
 
-  // Important Forms Handlers (Requirement 10)
+  // Important Forms Handlers
   const handleAddForm = (
     formData: Omit<ImportantForm, 'id' | 'createdAt' | 'addedByName' | 'submissionsCount'>
   ) => {
@@ -387,18 +476,28 @@ export default function App() {
     const updated = [newForm, ...importantForms];
     setImportantForms(updated);
     saveImportantForms(updated);
-    showToast('New important form link added', 'success');
+    saveImportantFormCloud(newForm).catch(console.error);
+    showToast('Important form published to all employees', 'success');
   };
 
   const handleEditForm = (id: string, formData: Partial<ImportantForm>) => {
     if (!currentUser || currentUser.role !== 'master_admin') return;
 
-    const updated = importantForms.map((f) =>
-      f.id === id ? { ...f, ...formData } : f
-    );
+    let targetForm: ImportantForm | null = null;
+    const updated = importantForms.map((f) => {
+      if (f.id === id) {
+        targetForm = { ...f, ...formData };
+        return targetForm;
+      }
+      return f;
+    });
+
     setImportantForms(updated);
     saveImportantForms(updated);
-    showToast('Form details updated successfully', 'success');
+    if (targetForm) {
+      saveImportantFormCloud(targetForm).catch(console.error);
+    }
+    showToast('Form details updated & synced to cloud', 'success');
   };
 
   const handleDeleteForm = (id: string) => {
@@ -407,35 +506,54 @@ export default function App() {
     const updated = importantForms.filter((f) => f.id !== id);
     setImportantForms(updated);
     saveImportantForms(updated);
+    deleteImportantFormCloud(id).catch(console.error);
     showToast('Form link removed', 'info');
   };
 
   const handleRecordFormSubmission = (id: string) => {
-    const updated = importantForms.map((f) =>
-      f.id === id ? { ...f, submissionsCount: (f.submissionsCount || 0) + 1 } : f
-    );
+    let targetForm: ImportantForm | null = null;
+    const updated = importantForms.map((f) => {
+      if (f.id === id) {
+        targetForm = { ...f, submissionsCount: (f.submissionsCount || 0) + 1 };
+        return targetForm;
+      }
+      return f;
+    });
+
     setImportantForms(updated);
     saveImportantForms(updated);
+    if (targetForm) {
+      saveImportantFormCloud(targetForm).catch(console.error);
+    }
     showToast('Form submission noted in system', 'success');
   };
 
-  // User Management & Active/Inactive Toggle (Requirement 3)
+  // User Management & Active/Inactive Toggle
   const handleToggleUserStatus = (userId: string, newStatus: boolean) => {
     if (!currentUser || currentUser.role !== 'master_admin') {
       showToast('Only Master Admin can change employee active/inactive status!', 'alert');
       return;
     }
 
-    const updated = users.map((u) =>
-      u.id === userId ? { ...u, isActive: newStatus } : u
-    );
+    let modifiedUser: User | null = null;
+    const updated = users.map((u) => {
+      if (u.id === userId) {
+        modifiedUser = { ...u, isActive: newStatus };
+        return modifiedUser;
+      }
+      return u;
+    });
+
     setUsers(updated);
     saveUsers(updated);
+    if (modifiedUser) {
+      saveUserCloud(modifiedUser).catch(console.error);
+    }
 
     showToast(
       newStatus
-        ? 'Employee has been activated.'
-        : 'Employee has been deactivated.',
+        ? 'Employee activated & synced to cloud.'
+        : 'Employee deactivated & synced to cloud.',
       'info'
     );
   };
@@ -443,12 +561,21 @@ export default function App() {
   const handleUpdateUserRole = (userId: string, newRole: UserRole, newDept: Department) => {
     if (!currentUser || currentUser.role !== 'master_admin') return;
 
-    const updated = users.map((u) =>
-      u.id === userId ? { ...u, role: newRole, department: newDept } : u
-    );
+    let modifiedUser: User | null = null;
+    const updated = users.map((u) => {
+      if (u.id === userId) {
+        modifiedUser = { ...u, role: newRole, department: newDept };
+        return modifiedUser;
+      }
+      return u;
+    });
+
     setUsers(updated);
     saveUsers(updated);
-    showToast('Staff role and department updated successfully', 'success');
+    if (modifiedUser) {
+      saveUserCloud(modifiedUser).catch(console.error);
+    }
+    showToast('Staff role & department synced to cloud', 'success');
   };
 
   const taskCounts = {
@@ -508,7 +635,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Content Area: pb-24 gives plenty of clearance for mobile fixed bottom menu */}
+      {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8">
         {activeTab === 'tasks' && (
           <TaskBoard

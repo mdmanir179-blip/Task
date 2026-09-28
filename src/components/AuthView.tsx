@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { User, Department, DEPARTMENT_CONFIG, UserRole } from '../types';
 import { saveUsers } from '../utils/storage';
+import { saveUserCloud } from '../utils/firebase';
 
 interface AuthViewProps {
   onSuccess: (user: User) => void;
@@ -230,6 +231,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
     const updated = [...users, newUser];
     setUsers(updated);
     saveUsers(updated);
+    saveUserCloud(newUser).catch(console.error);
 
     setSuccessMsg('Employee account registered successfully! Logging you in...');
     setTimeout(() => {
