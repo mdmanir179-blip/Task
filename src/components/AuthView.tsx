@@ -290,7 +290,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
       password: password,
       department: department,
       role: department === 'admin' ? 'admin' : 'employee',
-      designation: designation.trim() || `${DEPARTMENT_CONFIG[department].label} ${department === 'admin' ? 'Manager' : 'Staff'}`,
+      designation: designation.trim() || `${DEPARTMENT_CONFIG[department]?.label || department} ${department === 'admin' ? 'Manager' : 'Staff'}`,
       photoUrl: photoUrl || undefined,
       isActive: true,
       createdAt: new Date().toISOString(),

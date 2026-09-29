@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Bell, X, ArrowRight, User as UserIcon, Shield, Volume2 } from 'lucide-react';
-import { Task, DEPARTMENT_CONFIG, PRIORITY_CONFIG } from '../types';
+import { Task, DEPARTMENT_CONFIG, PRIORITY_CONFIG, getDepartmentConfig } from '../types';
 
 export interface TaskNotification {
   id: string;
@@ -31,8 +31,8 @@ export const TaskNotificationCard: React.FC<TaskNotificationCardProps> = ({
   if (!notification) return null;
 
   const { task } = notification;
-  const deptConfig = DEPARTMENT_CONFIG[task.department];
-  const priorityConfig = PRIORITY_CONFIG[task.priority];
+  const deptConfig = getDepartmentConfig(task?.department);
+  const priorityConfig = (task?.priority && PRIORITY_CONFIG[task.priority]) || PRIORITY_CONFIG.medium;
 
   return (
     <div className="fixed top-20 right-4 z-50 max-w-sm sm:max-w-md w-full animate-bounce-short pointer-events-auto">

@@ -28,6 +28,7 @@ import {
   deleteTaskCloud,
   subscribeUsers,
   saveUserCloud,
+  deleteUserCloud,
   subscribeCompanyPersons,
   saveCompanyPersonCloud,
   deleteCompanyPersonCloud,
@@ -57,6 +58,7 @@ import { EmployeeAnalytics } from './components/EmployeeAnalytics';
 import { UserManagement } from './components/UserManagement';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
+import { Language, getSavedLanguage, saveLanguagePreference, t } from './utils/i18n';
 
 export default function App() {
   // Theme state: dark / light
@@ -91,6 +93,22 @@ export default function App() {
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<'tasks' | 'directory' | 'forms' | 'analytics' | 'users'>('tasks');
+
+  // Multi-Language State (English default, Bangla, Hindi)
+  const [currentLang, setCurrentLang] = useState<Language>(getSavedLanguage);
+
+  const handleSelectLanguage = (lang: Language) => {
+    setCurrentLang(lang);
+    saveLanguagePreference(lang);
+    showToast(
+      lang === 'en'
+        ? 'Language set to English'
+        : lang === 'bn'
+        ? 'ভাষা বাংলায় সেট করা হয়েছে'
+        : 'भाषा हिन्दी में सेट की गई',
+      'info'
+    );
+  };
 
   // Modal states
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
@@ -142,9 +160,6 @@ export default function App() {
   // Multi-Device & Cross-Browser Real-Time Synchronization via Firebase Cloud Firestore
   useEffect(() => {
     testConnection().catch(console.error);
-
-    // Initial background push to sync any local tasks to cloud
-    forceSyncAllToCloud().catch(console.error);
 
     // 1. Subscribe to Cloud Tasks in real-time with New Task Audio Alert ("Music")
     const unsubTasks = subscribeTasks((cloudTasks) => {
@@ -701,7 +716,7 @@ export default function App() {
   };
 
   const handleUpdateUserRole = (userId: string, newRole: UserRole, newDept: Department) => {
-    if (!currentUser || currentUser.role !== 'master_admin') return;
+    if (!currentUser || (currentUser.role !== 'master_admin' && currentUser.role !== 'admin')) return;
 
     let modifiedUser: User | null = null;
     const updated = users.map((u) => {
@@ -718,6 +733,53 @@ export default function App() {
       saveUserCloud(modifiedUser).catch(console.error);
     }
     showToast('Staff role & department synced to cloud', 'success');
+  };
+
+  const handleUpdateUser = (updatedUser: User) => {
+    if (!currentUser || (currentUser.role !== 'master_admin' && currentUser.role !== 'admin')) {
+      showToast('Only Admin or Master Admin can edit employee details', 'alert');
+      return;
+    }
+
+    let modifiedUser: User | null = null;
+    const updated = users.map((u) => {
+      if (u.id === updatedUser.id) {
+        modifiedUser = updatedUser;
+        return modifiedUser;
+      }
+      return u;
+    });
+
+    setUsers(updated);
+    saveUsers(updated);
+    if (modifiedUser) {
+      saveUserCloud(modifiedUser).catch(console.error);
+    }
+    showToast(`Staff member "${updatedUser.name}" updated successfully`, 'success');
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!currentUser || (currentUser.role !== 'master_admin' && currentUser.role !== 'admin')) {
+      showToast('Only Admin or Master Admin can delete employees', 'alert');
+      return;
+    }
+
+    const target = users.find((u) => u.id === userId);
+    if (target?.phone === '01700000000' || target?.role === 'master_admin') {
+      showToast('Root Master Admin cannot be deleted', 'alert');
+      return;
+    }
+
+    if (userId === currentUser.id) {
+      showToast('You cannot delete your own account', 'alert');
+      return;
+    }
+
+    const updated = users.filter((u) => u.id !== userId);
+    setUsers(updated);
+    saveUsers(updated);
+    await deleteUserCloud(userId);
+    showToast(`Employee "${target?.name || userId}" deleted permanently`, 'info');
   };
 
   const taskCounts = {
@@ -763,6 +825,8 @@ export default function App() {
         isSoundOn={isSoundOn}
         onToggleSound={handleToggleSound}
         onTestSound={handleTestSound}
+        currentLang={currentLang}
+        onSelectLanguage={handleSelectLanguage}
       />
 
       {/* Real-Time Live Audio & Visual Task Notification Card */}
@@ -844,12 +908,15 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'users' && currentUser.role === 'master_admin' && (
+        {activeTab === 'users' && (currentUser.role === 'master_admin' || currentUser.role === 'admin') && (
           <UserManagement
             users={users}
             currentUser={currentUser}
             onToggleUserStatus={handleToggleUserStatus}
             onUpdateUserRole={handleUpdateUserRole}
+            onUpdateUser={handleUpdateUser}
+            onDeleteUser={handleDeleteUser}
+            currentLang={currentLang}
           />
         )}
       </main>
@@ -860,6 +927,7 @@ export default function App() {
         setActiveTab={setActiveTab}
         currentUser={currentUser}
         taskCounts={taskCounts}
+        currentLang={currentLang}
       />
 
       {/* Offline Status Pill */}

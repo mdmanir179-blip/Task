@@ -21,10 +21,12 @@ import {
   Clock,
   Sparkles,
 } from 'lucide-react';
-import { User, Task, DEPARTMENT_CONFIG } from '../types';
+import { User, Task, DEPARTMENT_CONFIG, getDepartmentConfig } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
 import { TaskNotification } from './TaskNotificationCard';
 import { TBCLogo } from './TBCLogo';
+import { LanguageSelector } from './LanguageSelector';
+import { Language, t } from '../utils/i18n';
 
 interface NavbarProps {
   currentUser: User | null;
@@ -46,6 +48,8 @@ interface NavbarProps {
   isSoundOn?: boolean;
   onToggleSound?: () => void;
   onTestSound?: () => void;
+  currentLang?: Language;
+  onSelectLanguage?: (lang: Language) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -64,10 +68,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   isSoundOn = true,
   onToggleSound,
   onTestSound,
+  currentLang = 'en',
+  onSelectLanguage,
 }) => {
   const isMasterAdmin = currentUser?.role === 'master_admin';
   const isAdmin = currentUser?.role === 'admin' || isMasterAdmin;
-  const deptConfig = currentUser ? DEPARTMENT_CONFIG[currentUser.department] : null;
+  const deptConfig = currentUser ? getDepartmentConfig(currentUser.department) : null;
 
   const [copiedLink, setCopiedLink] = useState(false);
   const [isNotifDropdownOpen, setIsNotifDropdownOpen] = useState(false);
@@ -133,7 +139,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <Layers className="w-4 h-4" />
-              <span>Daily Tasks</span>
+              <span>{t('nav_tasks', currentLang)}</span>
               {taskCounts.submitted > 0 && isAdmin && (
                 <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500 text-white font-bold animate-pulse">
                   {taskCounts.submitted}
@@ -150,7 +156,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <Building2 className="w-4 h-4" />
-              <span>Company Directory</span>
+              <span>{t('nav_directory', currentLang)}</span>
             </button>
 
             <button
@@ -162,7 +168,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <FileSpreadsheet className="w-4 h-4" />
-              <span>Important Forms</span>
+              <span>{t('nav_forms', currentLang)}</span>
             </button>
 
             <button
@@ -174,7 +180,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <BarChart3 className="w-4 h-4" />
-              <span>Turnaround Analytics</span>
+              <span>{t('nav_analytics', currentLang)}</span>
             </button>
 
             {isAdmin && (
@@ -187,7 +193,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <Users className="w-4 h-4" />
-                <span>Staff &amp; Access</span>
+                <span>{t('nav_staff', currentLang)}</span>
               </button>
             )}
           </nav>
@@ -369,6 +375,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* PWA Install Button */}
             <PWAInstallButton />
+
+            {/* Language Selector (English, Bangla, Hindi) */}
+            {onSelectLanguage && (
+              <LanguageSelector
+                currentLang={currentLang}
+                onSelectLanguage={onSelectLanguage}
+              />
+            )}
 
             {/* Dark Mode Toggle */}
             <button

@@ -15,7 +15,7 @@ import {
   CheckCircle2,
   XCircle,
 } from 'lucide-react';
-import { Task, User as UserModel, DEPARTMENT_CONFIG } from '../types';
+import { Task, User as UserModel, DEPARTMENT_CONFIG, getDepartmentConfig } from '../types';
 
 interface TaskDetailModalProps {
   task: Task | null;
@@ -53,7 +53,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const isMaster = currentUser.role === 'master_admin';
   const isAdmin = currentUser.role === 'admin' || isMaster;
   const isAssignee = currentUser.id === task.assignedToId;
-  const deptConfig = DEPARTMENT_CONFIG[task.department];
+  const deptConfig = getDepartmentConfig(task.department);
 
   const [submissionNote, setSubmissionNote] = useState('');
   const [problemFaced, setProblemFaced] = useState(task.problemFaced || '');
@@ -194,8 +194,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 <h4 className="text-xs font-bold text-rose-900 dark:text-rose-200">
                   Are you sure you want to permanently delete this task?
                 </h4>
-                <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5">
-                  টাস্কটি সব ব্রাউজার ও ডেটাবেজ থেকে মুছে যাবে। This action cannot be undone.
+                <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5 leading-relaxed">
+                  This task will be permanently deleted from all browsers and the cloud database. This action cannot be undone.
                 </p>
                 <div className="flex items-center gap-2 mt-2">
                   <button

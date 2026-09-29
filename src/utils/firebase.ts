@@ -52,6 +52,29 @@ export async function testConnection(): Promise<boolean> {
   }
 }
 
+const DELETED_USERS_KEY = 'tbc_deleted_users_v2';
+
+export function getDeletedUserIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(DELETED_USERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function addDeletedUserId(id: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const ids = getDeletedUserIds();
+    if (!ids.includes(id)) {
+      ids.push(id);
+      localStorage.setItem(DELETED_USERS_KEY, JSON.stringify(ids.slice(-300)));
+    }
+  } catch (e) {}
+}
+
 // ------------------- USERS -------------------
 export function subscribeUsers(onUpdate: (users: User[]) => void): Unsubscribe {
   const colRef = collection(db, USERS_COLLECTION);
@@ -59,13 +82,10 @@ export function subscribeUsers(onUpdate: (users: User[]) => void): Unsubscribe {
     colRef,
     async (snapshot) => {
       if (snapshot.empty) {
-        // Seed default Root Master Admin and any local registered users
-        const localUsers = getUsers();
-        const usersToSeed = localUsers.length > 0 ? localUsers : INITIAL_USERS;
-        for (const u of usersToSeed) {
-          await saveUserCloud(u);
-        }
-        onUpdate(usersToSeed);
+        // Seed default Root Master Admin only if the cloud collection is completely brand new
+        await saveUserCloud(INITIAL_USERS[0]);
+        saveUsers(INITIAL_USERS);
+        onUpdate(INITIAL_USERS);
         return;
       }
 
@@ -77,19 +97,11 @@ export function subscribeUsers(onUpdate: (users: User[]) => void): Unsubscribe {
       // Ensure Root Master Admin is always in the list
       const hasMaster = cloudUsers.some((u) => u.phone === '01700000000' || u.role === 'master_admin');
       if (!hasMaster) {
-        saveUserCloud(INITIAL_USERS[0]).catch(console.error);
+        await saveUserCloud(INITIAL_USERS[0]);
         cloudUsers.unshift(INITIAL_USERS[0]);
       }
 
-      // Check if local users exist that are missing in cloud (e.g. signed up offline)
-      const localUsers = getUsers();
-      for (const lu of localUsers) {
-        if (!cloudUsers.some((cu) => cu.id === lu.id || cu.phone === lu.phone)) {
-          saveUserCloud(lu).catch(console.error);
-          cloudUsers.push(lu);
-        }
-      }
-
+      saveUsers(cloudUsers);
       onUpdate(cloudUsers);
     },
     (err) => {
@@ -107,27 +119,14 @@ export async function saveUserCloud(user: User): Promise<void> {
   }
 }
 
-const DELETED_TASKS_KEY = 'tbc_deleted_tasks_v2';
-
-export function getDeletedTaskIds(): string[] {
-  if (typeof window === 'undefined') return [];
+export async function deleteUserCloud(userId: string): Promise<void> {
   try {
-    const raw = localStorage.getItem(DELETED_TASKS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    await deleteDoc(doc(db, USERS_COLLECTION, userId));
+    const currentLocal = getUsers().filter((u) => u.id !== userId);
+    saveUsers(currentLocal);
   } catch (e) {
-    return [];
+    console.error('Failed to delete user from cloud:', e);
   }
-}
-
-export function addDeletedTaskId(id: string) {
-  if (typeof window === 'undefined') return;
-  try {
-    const ids = getDeletedTaskIds();
-    if (!ids.includes(id)) {
-      ids.push(id);
-      localStorage.setItem(DELETED_TASKS_KEY, JSON.stringify(ids.slice(-300)));
-    }
-  } catch (e) {}
 }
 
 // ------------------- TASKS -------------------
@@ -135,49 +134,20 @@ export function subscribeTasks(onUpdate: (tasks: Task[]) => void): Unsubscribe {
   const colRef = collection(db, TASKS_COLLECTION);
   return onSnapshot(
     colRef,
-    async (snapshot) => {
-      const deletedIds = new Set(getDeletedTaskIds());
-
-      if (snapshot.empty) {
-        // If cloud is empty, check if this browser has local tasks to push
-        const localTasks = getTasks().filter((t) => !deletedIds.has(t.id));
-        if (localTasks && localTasks.length > 0) {
-          console.log('[Cloud Sync] Auto-migrating local tasks to Firestore:', localTasks.length);
-          for (const t of localTasks) {
-            await saveTaskCloud(t);
-          }
-          onUpdate(localTasks);
-          return;
-        }
-        onUpdate([]);
-        return;
-      }
-
+    (snapshot) => {
       const cloudTasks: Task[] = [];
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data() as Task;
-        // Ignore test connection check doc and deleted tasks
-        if (docSnap.id !== 'connection-health-check' && !deletedIds.has(docSnap.id)) {
-          cloudTasks.push(data);
+        if (docSnap.id !== 'connection-health-check') {
+          cloudTasks.push(docSnap.data() as Task);
         }
       });
-
-      // Automatic bi-directional sync: if local storage has tasks missing in cloud (and not deleted), upload them!
-      const localTasks = getTasks().filter((t) => !deletedIds.has(t.id));
-      for (const lt of localTasks) {
-        if (lt.id !== 'connection-health-check' && !cloudTasks.some((ct) => ct.id === lt.id)) {
-          console.log('[Cloud Sync] Uploading missing task to Firestore:', lt.title);
-          saveTaskCloud(lt).catch(console.error);
-          cloudTasks.push(lt);
-        }
-      }
 
       // Sort newest tasks first
       cloudTasks.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
 
-      // Keep local cache synced
+      // Save to local cache so offline preview has latest data, but NEVER re-upload deletions
       saveTasks(cloudTasks);
       onUpdate(cloudTasks);
     },
@@ -198,7 +168,6 @@ export async function saveTaskCloud(task: Task): Promise<void> {
 
 export async function deleteTaskCloud(taskId: string): Promise<void> {
   try {
-    addDeletedTaskId(taskId);
     await deleteDoc(doc(db, TASKS_COLLECTION, taskId));
     const currentLocal = getTasks().filter((t) => t.id !== taskId);
     saveTasks(currentLocal);
@@ -214,32 +183,13 @@ export function subscribeCompanyPersons(
   const colRef = collection(db, PERSONS_COLLECTION);
   return onSnapshot(
     colRef,
-    async (snapshot) => {
-      if (snapshot.empty) {
-        const localPersons = getCompanyPersons();
-        if (localPersons.length > 0) {
-          for (const p of localPersons) {
-            await saveCompanyPersonCloud(p);
-          }
-          onUpdate(localPersons);
-          return;
-        }
-      }
-
+    (snapshot) => {
       const cloudPersons: CompanyPerson[] = [];
       snapshot.forEach((docSnap) => {
         cloudPersons.push(docSnap.data() as CompanyPerson);
       });
 
-      // Sync local missing
-      const localPersons = getCompanyPersons();
-      for (const lp of localPersons) {
-        if (!cloudPersons.some((cp) => cp.id === lp.id)) {
-          saveCompanyPersonCloud(lp).catch(console.error);
-          cloudPersons.push(lp);
-        }
-      }
-
+      saveCompanyPersons(cloudPersons);
       onUpdate(cloudPersons);
     },
     (err) => {
@@ -260,6 +210,8 @@ export async function saveCompanyPersonCloud(person: CompanyPerson): Promise<voi
 export async function deleteCompanyPersonCloud(personId: string): Promise<void> {
   try {
     await deleteDoc(doc(db, PERSONS_COLLECTION, personId));
+    const currentLocal = getCompanyPersons().filter((p) => p.id !== personId);
+    saveCompanyPersons(currentLocal);
   } catch (e) {
     console.error('Failed to delete company person from cloud:', e);
   }
@@ -272,35 +224,16 @@ export function subscribeImportantForms(
   const colRef = collection(db, FORMS_COLLECTION);
   return onSnapshot(
     colRef,
-    async (snapshot) => {
-      if (snapshot.empty) {
-        const localForms = getImportantForms();
-        if (localForms.length > 0) {
-          for (const f of localForms) {
-            await saveImportantFormCloud(f);
-          }
-          onUpdate(localForms);
-          return;
-        }
-      }
-
+    (snapshot) => {
       const cloudForms: ImportantForm[] = [];
       snapshot.forEach((docSnap) => {
         cloudForms.push(docSnap.data() as ImportantForm);
       });
 
-      // Sync local missing
-      const localForms = getImportantForms();
-      for (const lf of localForms) {
-        if (!cloudForms.some((cf) => cf.id === lf.id)) {
-          saveImportantFormCloud(lf).catch(console.error);
-          cloudForms.push(lf);
-        }
-      }
-
       cloudForms.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
+      saveImportantForms(cloudForms);
       onUpdate(cloudForms);
     },
     (err) => {
@@ -321,32 +254,30 @@ export async function saveImportantFormCloud(form: ImportantForm): Promise<void>
 export async function deleteImportantFormCloud(formId: string): Promise<void> {
   try {
     await deleteDoc(doc(db, FORMS_COLLECTION, formId));
+    const currentLocal = getImportantForms().filter((f) => f.id !== formId);
+    saveImportantForms(currentLocal);
   } catch (e) {
     console.error('Failed to delete form from cloud:', e);
   }
 }
 
-// Force immediate full sync
+// Force immediate full refresh from cloud
 export async function forceSyncAllToCloud(): Promise<void> {
   try {
-    const localTasks = getTasks();
-    for (const t of localTasks) {
-      await saveTaskCloud(t);
-    }
-    const localUsers = getUsers();
-    for (const u of localUsers) {
-      await saveUserCloud(u);
-    }
-    const localPersons = getCompanyPersons();
-    for (const p of localPersons) {
-      await saveCompanyPersonCloud(p);
-    }
-    const localForms = getImportantForms();
-    for (const f of localForms) {
-      await saveImportantFormCloud(f);
-    }
-    console.log('[Cloud Sync] Full manual sync completed successfully!');
+    const taskSnap = await getDocs(collection(db, TASKS_COLLECTION));
+    const cloudTasks: Task[] = [];
+    taskSnap.forEach((d) => {
+      if (d.id !== 'connection-health-check') cloudTasks.push(d.data() as Task);
+    });
+    saveTasks(cloudTasks);
+
+    const userSnap = await getDocs(collection(db, USERS_COLLECTION));
+    const cloudUsers: User[] = [];
+    userSnap.forEach((d) => cloudUsers.push(d.data() as User));
+    saveUsers(cloudUsers);
+
+    console.log('[Cloud Sync] Refresh completed from Firestore!');
   } catch (err) {
-    console.error('[Cloud Sync] Error during manual sync:', err);
+    console.error('[Cloud Sync] Error during refresh:', err);
   }
 }

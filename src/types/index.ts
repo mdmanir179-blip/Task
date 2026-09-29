@@ -147,6 +147,12 @@ export const DEPARTMENT_CONFIG: Record<
   },
 };
 
+export function getDepartmentConfig(dept?: string | null) {
+  if (!dept) return DEPARTMENT_CONFIG.backoffice;
+  const key = dept.toLowerCase() as Department;
+  return DEPARTMENT_CONFIG[key] || DEPARTMENT_CONFIG.backoffice;
+}
+
 export const PRIORITY_CONFIG: Record<
   TaskPriority,
   { label: string; color: string; badgeBg: string; textColor: string }

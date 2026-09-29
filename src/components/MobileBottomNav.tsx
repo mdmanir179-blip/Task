@@ -12,6 +12,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { User, DEPARTMENT_CONFIG } from '../types';
+import { Language, t } from '../utils/i18n';
 
 interface MobileBottomNavProps {
   activeTab: 'tasks' | 'directory' | 'forms' | 'analytics' | 'users';
@@ -22,6 +23,7 @@ interface MobileBottomNavProps {
     submitted: number;
     total: number;
   };
+  currentLang?: Language;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
@@ -29,6 +31,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   setActiveTab,
   currentUser,
   taskCounts,
+  currentLang = 'en',
 }) => {
   if (!currentUser) return null;
 
@@ -56,7 +59,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               </span>
             )}
           </div>
-          <span className="text-[10px] mt-0.5 tracking-tight font-medium">Tasks</span>
+          <span className="text-[10px] mt-0.5 tracking-tight font-medium">
+            {t('nav_tasks', currentLang)}
+          </span>
           {activeTab === 'tasks' && (
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 mt-0.5" />
           )}
@@ -73,7 +78,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           }`}
         >
           <Building2 className={`w-5 h-5 ${activeTab === 'directory' ? 'scale-110' : ''} transition-transform`} />
-          <span className="text-[10px] mt-0.5 tracking-tight font-medium">Directory</span>
+          <span className="text-[10px] mt-0.5 tracking-tight font-medium">
+            {t('nav_directory', currentLang)}
+          </span>
           {activeTab === 'directory' && (
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 mt-0.5" />
           )}
@@ -90,7 +97,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           }`}
         >
           <FileSpreadsheet className={`w-5 h-5 ${activeTab === 'forms' ? 'scale-110' : ''} transition-transform`} />
-          <span className="text-[10px] mt-0.5 tracking-tight font-medium">Forms</span>
+          <span className="text-[10px] mt-0.5 tracking-tight font-medium">
+            {t('nav_forms', currentLang)}
+          </span>
           {activeTab === 'forms' && (
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 mt-0.5" />
           )}
@@ -107,14 +116,16 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           }`}
         >
           <BarChart3 className={`w-5 h-5 ${activeTab === 'analytics' ? 'scale-110' : ''} transition-transform`} />
-          <span className="text-[10px] mt-0.5 tracking-tight font-medium">Turnaround</span>
+          <span className="text-[10px] mt-0.5 tracking-tight font-medium">
+            {t('nav_analytics', currentLang)}
+          </span>
           {activeTab === 'analytics' && (
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 mt-0.5" />
           )}
         </button>
 
-        {/* Tab 5: Master Admin Staff Control (Only for Master Admin) */}
-        {isMasterAdmin && (
+        {/* Tab 5: Admin & Master Admin Staff Control */}
+        {isAdmin && (
           <button
             type="button"
             onClick={() => setActiveTab('users')}
@@ -125,7 +136,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             }`}
           >
             <Users className={`w-5 h-5 ${activeTab === 'users' ? 'scale-110' : ''} transition-transform`} />
-            <span className="text-[10px] mt-0.5 tracking-tight font-medium">Staff</span>
+            <span className="text-[10px] mt-0.5 tracking-tight font-medium">
+              {t('nav_staff', currentLang)}
+            </span>
             {activeTab === 'users' && (
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 mt-0.5" />
             )}

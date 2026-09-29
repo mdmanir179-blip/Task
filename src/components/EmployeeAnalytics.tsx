@@ -9,7 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { Task, User as UserModel, DEPARTMENT_CONFIG, Department } from '../types';
+import { Task, User as UserModel, DEPARTMENT_CONFIG, Department, getDepartmentConfig } from '../types';
 
 interface EmployeeAnalyticsProps {
   tasks: Task[];
@@ -157,7 +157,7 @@ export const EmployeeAnalytics: React.FC<EmployeeAnalyticsProps> = ({
       {/* Employee Cards List */}
       <div className="space-y-4">
         {filteredStats.map((item) => {
-          const deptConfig = DEPARTMENT_CONFIG[item.user.department];
+          const deptConfig = getDepartmentConfig(item.user.department);
           const isExpanded = expandedEmployeeId === item.user.id;
 
           return (
