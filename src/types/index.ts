@@ -143,3 +143,34 @@ export const DEPARTMENT_CONFIG: Record<
     border: 'border-rose-300 dark:border-rose-700',
   },
 };
+
+export const PRIORITY_CONFIG: Record<
+  TaskPriority,
+  { label: string; color: string; badgeBg: string; textColor: string }
+> = {
+  low: {
+    label: 'Low',
+    color: 'text-slate-500',
+    badgeBg: 'bg-slate-100 dark:bg-slate-800',
+    textColor: 'text-slate-600 dark:text-slate-400',
+  },
+  medium: {
+    label: 'Medium',
+    color: 'text-blue-500',
+    badgeBg: 'bg-blue-100 dark:bg-blue-950/60',
+    textColor: 'text-blue-700 dark:text-blue-300',
+  },
+  high: {
+    label: 'High',
+    color: 'text-amber-500',
+    badgeBg: 'bg-amber-100 dark:bg-amber-950/60',
+    textColor: 'text-amber-700 dark:text-amber-300',
+  },
+  urgent: {
+    label: 'Urgent',
+    color: 'text-rose-500',
+    badgeBg: 'bg-rose-100 dark:bg-rose-950/60',
+    textColor: 'text-rose-700 dark:text-rose-300',
+  },
+};
+

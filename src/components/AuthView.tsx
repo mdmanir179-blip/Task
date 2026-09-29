@@ -20,6 +20,7 @@ import { User, Department, DEPARTMENT_CONFIG, UserRole } from '../types';
 import { saveUsers } from '../utils/storage';
 import { saveUserCloud, db } from '../utils/firebase';
 import { collection, getDocs } from 'firebase/firestore';
+import { TBCLogo } from './TBCLogo';
 
 interface AuthViewProps {
   onSuccess: (user: User) => void;
@@ -327,18 +328,14 @@ export const AuthView: React.FC<AuthViewProps> = ({
               });
             }}
             title="TBC Task"
-            className="inline-flex items-center justify-center w-16 h-16 rounded-3xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white shadow-xl shadow-indigo-500/25 mb-4 ring-4 ring-white dark:ring-slate-800 transition active:scale-95 cursor-default focus:outline-none"
+            className="inline-flex items-center justify-center p-1 rounded-2xl mb-3 ring-4 ring-white dark:ring-slate-800 transition active:scale-95 cursor-pointer focus:outline-none shadow-lg shadow-amber-400/20"
           >
-            {isMaster ? (
-              <ShieldCheck className="w-8 h-8 stroke-[2.2]" />
-            ) : (
-              <Building2 className="w-8 h-8 stroke-[2.2]" />
-            )}
+            <TBCLogo size={56} rounded="xl" />
           </button>
-          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
             {isMaster ? 'Master Admin Portal' : 'TBC Task Workspace'}
           </h2>
-          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             {isMaster
               ? 'Secure master administrative & executive control portal'
               : 'Sign in to access your daily tasks and operational workflows'}

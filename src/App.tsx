@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   User,
   Task,
@@ -36,6 +36,13 @@ import {
   deleteImportantFormCloud,
   forceSyncAllToCloud,
 } from './utils/firebase';
+import {
+  playNotificationSound,
+  isSoundEnabled,
+  setSoundEnabled,
+  sendBrowserNotification,
+  requestNotificationPermission,
+} from './utils/sound';
 import { Navbar } from './components/Navbar';
 import { AuthView } from './components/AuthView';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -43,6 +50,7 @@ import { TaskBoard } from './components/TaskBoard';
 import { TaskDetailModal } from './components/TaskDetailModal';
 import { TaskFormModal } from './components/TaskFormModal';
 import { TaskEvaluationModal } from './components/TaskEvaluationModal';
+import { TaskNotificationCard, TaskNotification } from './components/TaskNotificationCard';
 import { CompanyDirectory } from './components/CompanyDirectory';
 import { ImportantForms } from './components/ImportantForms';
 import { EmployeeAnalytics } from './components/EmployeeAnalytics';
@@ -93,6 +101,36 @@ export default function App() {
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'info' | 'success' | 'alert' } | null>(null);
 
+  // Notification & Sound State
+  const [latestNotification, setLatestNotification] = useState<TaskNotification | null>(null);
+  const [notificationsList, setNotificationsList] = useState<TaskNotification[]>([]);
+  const [isSoundOn, setIsSoundOn] = useState<boolean>(() => isSoundEnabled());
+  const knownTaskIdsRef = useRef<Set<string>>(new Set());
+  const isInitialTaskLoadRef = useRef<boolean>(true);
+
+  const handleToggleSound = () => {
+    const next = !isSoundOn;
+    setIsSoundOn(next);
+    setSoundEnabled(next);
+    if (next) {
+      playNotificationSound();
+      showToast('Notification music active 🎵', 'info');
+    } else {
+      showToast('Notification music muted 🔇', 'info');
+    }
+  };
+
+  const handleTestSound = () => {
+    playNotificationSound();
+    showToast('Playing notification music chime 🔔', 'info');
+    requestNotificationPermission().catch(() => {});
+  };
+
+  const handleClearNotifications = () => {
+    setNotificationsList([]);
+    showToast('Notifications cleared', 'info');
+  };
+
   const showToast = useCallback((text: string, type: 'info' | 'success' | 'alert' = 'info') => {
     setToastMessage({ text, type });
     setTimeout(() => {
@@ -107,8 +145,43 @@ export default function App() {
     // Initial background push to sync any local tasks to cloud
     forceSyncAllToCloud().catch(console.error);
 
-    // 1. Subscribe to Cloud Tasks in real-time
+    // 1. Subscribe to Cloud Tasks in real-time with New Task Audio Alert ("Music")
     const unsubTasks = subscribeTasks((cloudTasks) => {
+      if (isInitialTaskLoadRef.current) {
+        // First snapshot load - populate known IDs without audio alert
+        knownTaskIdsRef.current = new Set(cloudTasks.map((t) => t.id));
+        isInitialTaskLoadRef.current = false;
+        setTasks(cloudTasks);
+        saveTasks(cloudTasks);
+        return;
+      }
+
+      // Detect newly added tasks from any connected device/admin
+      const newTasks = cloudTasks.filter((t) => !knownTaskIdsRef.current.has(t.id));
+      if (newTasks.length > 0) {
+        newTasks.forEach((t) => knownTaskIdsRef.current.add(t.id));
+        const freshTask = newTasks[0];
+
+        // Play melodious notification sound ("music")
+        playNotificationSound();
+
+        // Create interactive notification toast
+        const notifItem: TaskNotification = {
+          id: `notif_${Date.now()}_${freshTask.id}`,
+          task: freshTask,
+          timestamp: new Date().toISOString(),
+          read: false,
+        };
+        setLatestNotification(notifItem);
+        setNotificationsList((prev) => [notifItem, ...prev].slice(0, 30));
+
+        // System desktop/mobile push notification
+        sendBrowserNotification(
+          `🔔 New Task: ${freshTask.title}`,
+          `Assigned to ${freshTask.assignedToName} by ${freshTask.assignedByName}`
+        );
+      }
+
       setTasks(cloudTasks);
       saveTasks(cloudTasks);
     });
@@ -247,6 +320,19 @@ export default function App() {
       const updated = [newTask, ...tasks];
       setTasks(updated);
       saveTasks(updated);
+
+      // Play notification music chime and register locally
+      knownTaskIdsRef.current.add(newTask.id);
+      playNotificationSound();
+      const notifItem: TaskNotification = {
+        id: `notif_${Date.now()}_${newTask.id}`,
+        task: newTask,
+        timestamp: now,
+        read: false,
+      };
+      setLatestNotification(notifItem);
+      setNotificationsList((prev) => [notifItem, ...prev].slice(0, 30));
+
       // Immediately push to Firebase Cloud Firestore for other browsers & devices
       saveTaskCloud(newTask).catch(console.error);
       showToast(`New task assigned to ${newTask.assignedToName} and synced to cloud`, 'success');
@@ -609,7 +695,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
-      {/* Main App Navigation (Header bar is clean without demo banner) */}
+      {/* Main App Navigation */}
       <Navbar
         currentUser={currentUser}
         activeTab={activeTab}
@@ -620,6 +706,25 @@ export default function App() {
         setDarkMode={setDarkMode}
         taskCounts={taskCounts}
         onForceSync={handleForceSync}
+        notifications={notificationsList}
+        onClearNotifications={handleClearNotifications}
+        onOpenTask={(task) => {
+          setSelectedTask(task);
+          setActiveTab('tasks');
+        }}
+        isSoundOn={isSoundOn}
+        onToggleSound={handleToggleSound}
+        onTestSound={handleTestSound}
+      />
+
+      {/* Real-Time Live Audio & Visual Task Notification Card */}
+      <TaskNotificationCard
+        notification={latestNotification}
+        onDismiss={() => setLatestNotification(null)}
+        onOpenTask={(t) => {
+          setSelectedTask(t);
+          setActiveTab('tasks');
+        }}
       />
 
       {/* Toast Alert Banner */}

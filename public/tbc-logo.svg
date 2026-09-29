@@ -1,23 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
   <defs>
-    <clipPath id="topHalf">
+    <clipPath id="tbcTopHalf">
       <rect x="0" y="0" width="500" height="225" />
     </clipPath>
-    <clipPath id="bottomHalf">
+    <clipPath id="tbcBottomHalf">
       <rect x="0" y="265" width="500" height="235" />
     </clipPath>
   </defs>
 
-  <!-- Yellow Brand Background with Rounded App Icon Corners -->
-  <rect width="500" height="500" rx="90" fill="#FFDE00" />
+  <!-- Yellow Brand Background -->
+  <rect width="500" height="500" fill="#FFDE00" />
 
   <!-- Top Half of TBC -->
-  <g clip-path="url(#topHalf)">
+  <g clip-path="url(#tbcTopHalf)">
     <text x="250" y="325" font-family="system-ui, -apple-system, 'Arial Black', Impact, 'Montserrat', sans-serif" font-weight="900" font-size="182" fill="#000000" text-anchor="middle" letter-spacing="4">TBC</text>
   </g>
 
   <!-- Bottom Half of TBC -->
-  <g clip-path="url(#bottomHalf)">
+  <g clip-path="url(#tbcBottomHalf)">
     <text x="250" y="325" font-family="system-ui, -apple-system, 'Arial Black', Impact, 'Montserrat', sans-serif" font-weight="900" font-size="182" fill="#000000" text-anchor="middle" letter-spacing="4">TBC</text>
   </g>
 
