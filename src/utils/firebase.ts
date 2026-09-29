@@ -107,15 +107,40 @@ export async function saveUserCloud(user: User): Promise<void> {
   }
 }
 
+const DELETED_TASKS_KEY = 'tbc_deleted_tasks_v2';
+
+export function getDeletedTaskIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(DELETED_TASKS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function addDeletedTaskId(id: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const ids = getDeletedTaskIds();
+    if (!ids.includes(id)) {
+      ids.push(id);
+      localStorage.setItem(DELETED_TASKS_KEY, JSON.stringify(ids.slice(-300)));
+    }
+  } catch (e) {}
+}
+
 // ------------------- TASKS -------------------
 export function subscribeTasks(onUpdate: (tasks: Task[]) => void): Unsubscribe {
   const colRef = collection(db, TASKS_COLLECTION);
   return onSnapshot(
     colRef,
     async (snapshot) => {
+      const deletedIds = new Set(getDeletedTaskIds());
+
       if (snapshot.empty) {
         // If cloud is empty, check if this browser has local tasks to push
-        const localTasks = getTasks();
+        const localTasks = getTasks().filter((t) => !deletedIds.has(t.id));
         if (localTasks && localTasks.length > 0) {
           console.log('[Cloud Sync] Auto-migrating local tasks to Firestore:', localTasks.length);
           for (const t of localTasks) {
@@ -131,14 +156,14 @@ export function subscribeTasks(onUpdate: (tasks: Task[]) => void): Unsubscribe {
       const cloudTasks: Task[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as Task;
-        // Ignore test connection check doc
-        if (docSnap.id !== 'connection-health-check') {
+        // Ignore test connection check doc and deleted tasks
+        if (docSnap.id !== 'connection-health-check' && !deletedIds.has(docSnap.id)) {
           cloudTasks.push(data);
         }
       });
 
-      // Automatic bi-directional sync: if local storage has tasks missing in cloud, upload them!
-      const localTasks = getTasks();
+      // Automatic bi-directional sync: if local storage has tasks missing in cloud (and not deleted), upload them!
+      const localTasks = getTasks().filter((t) => !deletedIds.has(t.id));
       for (const lt of localTasks) {
         if (lt.id !== 'connection-health-check' && !cloudTasks.some((ct) => ct.id === lt.id)) {
           console.log('[Cloud Sync] Uploading missing task to Firestore:', lt.title);
@@ -152,6 +177,8 @@ export function subscribeTasks(onUpdate: (tasks: Task[]) => void): Unsubscribe {
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
 
+      // Keep local cache synced
+      saveTasks(cloudTasks);
       onUpdate(cloudTasks);
     },
     (err) => {
@@ -171,7 +198,10 @@ export async function saveTaskCloud(task: Task): Promise<void> {
 
 export async function deleteTaskCloud(taskId: string): Promise<void> {
   try {
+    addDeletedTaskId(taskId);
     await deleteDoc(doc(db, TASKS_COLLECTION, taskId));
+    const currentLocal = getTasks().filter((t) => t.id !== taskId);
+    saveTasks(currentLocal);
   } catch (e) {
     console.error('Failed to delete task from cloud:', e);
   }

@@ -58,6 +58,9 @@ export interface Task {
   rating?: number; // 1-5 stars
   adminComment?: string;
   employeeSubmissionNote?: string;
+  problemFaced?: string; // Problem or obstacle encountered by employee
+  allWorkCompleted?: boolean; // Whether all work was completed (Yes / No)
+  isSelfAssigned?: boolean; // True if employee added the task on their own initiative
   checklist: TaskChecklistItem[];
   history: TaskHistoryItem[];
 }

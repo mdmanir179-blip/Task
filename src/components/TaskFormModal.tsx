@@ -9,6 +9,7 @@ interface TaskFormModalProps {
   initialTask?: Task | null;
   users: UserModel[];
   currentUser: UserModel;
+  defaultSelfTask?: boolean;
 }
 
 export const TaskFormModal: React.FC<TaskFormModalProps> = ({
@@ -18,23 +19,37 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   initialTask,
   users,
   currentUser,
+  defaultSelfTask = false,
 }) => {
   if (!isOpen) return null;
 
   const isEdit = !!initialTask;
   const isMaster = currentUser.role === 'master_admin';
+  const isAdmin = currentUser.role === 'admin' || isMaster;
+
+  const [isSelfTask, setIsSelfTask] = useState<boolean>(
+    initialTask?.isSelfAssigned || defaultSelfTask || (!isAdmin && !isEdit)
+  );
 
   const [title, setTitle] = useState(initialTask?.title || '');
   const [description, setDescription] = useState(initialTask?.description || '');
   const [department, setDepartment] = useState<Department>(
     initialTask?.department || currentUser.department || 'printing'
   );
-  const [assignedToId, setAssignedToId] = useState(initialTask?.assignedToId || '');
+  const [assignedToId, setAssignedToId] = useState(
+    initialTask?.assignedToId || (isSelfTask ? currentUser.id : '')
+  );
   const [priority, setPriority] = useState<TaskPriority>(initialTask?.priority || 'medium');
   const [dueDate, setDueDate] = useState(
     initialTask?.dueDate || new Date().toISOString().split('T')[0]
   );
   const [dueTime, setDueTime] = useState(initialTask?.dueTime || '18:00');
+
+  // Self task extra fields
+  const [problemFaced, setProblemFaced] = useState(initialTask?.problemFaced || '');
+  const [allWorkCompleted, setAllWorkCompleted] = useState<boolean>(
+    initialTask?.allWorkCompleted !== undefined ? initialTask.allWorkCompleted : true
+  );
 
   // Checklist
   const [checklist, setChecklist] = useState<{ id: string; text: string; done: boolean }[]>(
@@ -50,12 +65,13 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   const activeUsers = users.filter((u) => u.isActive);
 
   useEffect(() => {
-    if (!assignedToId && activeUsers.length > 0) {
-      // Pick first user from selected dept, or any active user
+    if (isSelfTask) {
+      setAssignedToId(currentUser.id);
+    } else if (!assignedToId && activeUsers.length > 0) {
       const deptUser = activeUsers.find((u) => u.department === department);
       setAssignedToId(deptUser ? deptUser.id : activeUsers[0].id);
     }
-  }, [department, activeUsers, assignedToId]);
+  }, [department, activeUsers, assignedToId, isSelfTask, currentUser.id]);
 
   const handleAddChecklistItem = () => {
     if (!newChecklistText.trim()) return;
@@ -74,19 +90,28 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
     e.preventDefault();
     if (!title.trim()) return;
 
-    const assignedUser = users.find((u) => u.id === assignedToId);
+    const assignedUser = isSelfTask ? currentUser : users.find((u) => u.id === assignedToId);
 
     const taskPayload: Partial<Task> = {
       ...(initialTask?.id ? { id: initialTask.id } : {}),
       title: title.trim(),
       description: description.trim(),
       department,
-      assignedToId: assignedToId || currentUser.id,
+      assignedToId: isSelfTask ? currentUser.id : assignedToId || currentUser.id,
       assignedToName: assignedUser ? assignedUser.name : currentUser.name,
       priority,
       dueDate,
       dueTime,
       checklist,
+      ...(isSelfTask
+        ? {
+            isSelfAssigned: true,
+            status: 'submitted',
+            submittedAt: new Date().toISOString(),
+            problemFaced: problemFaced.trim() || undefined,
+            allWorkCompleted: allWorkCompleted,
+          }
+        : {}),
     };
 
     onSave(taskPayload);
@@ -97,20 +122,28 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
       <div className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-600 to-violet-600 p-5 text-white flex items-center justify-between">
+        <div
+          className={`p-5 text-white flex items-center justify-between transition-colors ${
+            isSelfTask
+              ? 'bg-gradient-to-r from-purple-700 via-indigo-600 to-violet-700'
+              : 'bg-gradient-to-r from-indigo-600 to-violet-600'
+          }`}
+        >
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
               <CheckSquare className="w-5 h-5 text-white" />
             </div>
             <div>
               <h3 className="font-bold text-base">
-                {isEdit ? 'Edit Task Details' : 'Assign / Add Task'}
+                {isEdit
+                  ? 'Edit Task Details'
+                  : isSelfTask
+                  ? 'স্ব-উদ্যোগে টাস্ক এন্ট্রি (Self Task Entry)'
+                  : 'Assign / Add Task'}
               </h3>
               <p className="text-xs text-indigo-100">
-                {currentUser.role === 'master_admin'
-                  ? 'Master Admin task assignment'
-                  : currentUser.role === 'admin'
-                  ? 'Admin task assignment to staff'
+                {isSelfTask
+                  ? 'এডমিন টাস্ক দিতে ভুলে গেলে বা নিজে কাজ করলে সরাসরি এন্ট্রি করে ভেরিফিকেশনে পাঠান'
                   : 'Assign daily operational task to colleagues'}
               </p>
             </div>
@@ -125,6 +158,43 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* Mode Switcher (Self Task vs Assign Task) */}
+          {!isEdit && (
+            <div className="grid grid-cols-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSelfTask(true);
+                  setAssignedToId(currentUser.id);
+                }}
+                className={`py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
+                  isSelfTask
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                ★ নিজে করা কাজ এন্ট্রি (Self Task)
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSelfTask(false)}
+                className={`py-2 text-xs font-bold rounded-xl transition cursor-pointer ${
+                  !isSelfTask
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                অন্যকে টাস্ক দেওয়া (Assign Task)
+              </button>
+            </div>
+          )}
+
+          {/* Self Task Notice Banner */}
+          {isSelfTask && (
+            <div className="p-3 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900 text-xs text-purple-900 dark:text-purple-200">
+              <strong>💡 সেলফ টাস্ক মোড:</strong> এই টাস্কটি সম্পন্ন হিসেবে সরাসরি অ্যাডমিনের কাছে ভেরিফিকেশন ও স্টার রেটিংয়ের জন্য জমা পড়বে।
+            </div>
+          )}
           {/* Title */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -164,43 +234,100 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Assign To Employee *
+                {isSelfTask ? 'Assignee (Who did the work)' : 'Assign To Employee *'}
               </label>
-              <select
-                required
-                value={assignedToId}
-                onChange={(e) => setAssignedToId(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none cursor-pointer"
-              >
-                {/* Categorized options */}
-                <optgroup label={`Staff in ${DEPARTMENT_CONFIG[department]?.label || department}`}>
-                  {activeUsers
-                    .filter((u) => u.department === department)
-                    .map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.employeeId || u.phone}) — {u.designation || u.role} {u.id === currentUser.id ? '(You)' : ''}
-                      </option>
-                    ))}
-                </optgroup>
+              {isSelfTask ? (
+                <div className="w-full px-3 py-2 text-xs rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 font-bold flex items-center justify-between">
+                  <span>{currentUser.name} (You)</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-200 dark:bg-purple-900 text-purple-800 dark:text-purple-300 font-mono">
+                    {currentUser.employeeId || currentUser.phone}
+                  </span>
+                </div>
+              ) : (
+                <select
+                  required
+                  value={assignedToId}
+                  onChange={(e) => setAssignedToId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none cursor-pointer"
+                >
+                  {/* Categorized options */}
+                  <optgroup label={`Staff in ${DEPARTMENT_CONFIG[department]?.label || department}`}>
+                    {activeUsers
+                      .filter((u) => u.department === department)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.employeeId || u.phone}) — {u.designation || u.role} {u.id === currentUser.id ? '(You)' : ''}
+                        </option>
+                      ))}
+                  </optgroup>
 
-                <optgroup label="Other Department Staff / Employees">
-                  {activeUsers
-                    .filter((u) => u.department !== department)
-                    .map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name} ({u.employeeId || u.phone}) — {DEPARTMENT_CONFIG[u.department]?.label || u.department} {u.id === currentUser.id ? '(You)' : ''}
-                      </option>
-                    ))}
-                </optgroup>
+                  <optgroup label="Other Department Staff / Employees">
+                    {activeUsers
+                      .filter((u) => u.department !== department)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name} ({u.employeeId || u.phone}) — {DEPARTMENT_CONFIG[u.department]?.label || u.department} {u.id === currentUser.id ? '(You)' : ''}
+                        </option>
+                      ))}
+                  </optgroup>
 
-                {activeUsers.length === 0 && (
-                  <option value={currentUser.id}>
-                    {currentUser.name} (Current User)
-                  </option>
-                )}
-              </select>
+                  {activeUsers.length === 0 && (
+                    <option value={currentUser.id}>
+                      {currentUser.name} (Current User)
+                    </option>
+                  )}
+                </select>
+              )}
             </div>
           </div>
+
+          {/* Self-Task: Problem Faced and All Work Complete */}
+          {isSelfTask && (
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
+                  কাজে কোনো সমস্যা হয়েছিল কি? (Problem Faced - if any):
+                </label>
+                <input
+                  type="text"
+                  value={problemFaced}
+                  onChange={(e) => setProblemFaced(e.target.value)}
+                  placeholder="মেশিন ত্রুটি, কাঁচামালের অভাব বা অন্য কোনো সমস্যা থাকলে লিখুন..."
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
+                  সব কাজ কি সম্পূর্ণ শেষ হয়েছে? (All Work Complete?):
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAllWorkCompleted(true)}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                      allWorkCompleted
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    <span>✓ Yes (সম্পূর্ণ শেষ)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAllWorkCompleted(false)}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                      !allWorkCompleted
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    <span>✕ No (বাকি আছে)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Priority & Deadline */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -331,10 +458,20 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 active:scale-95 transition cursor-pointer flex items-center gap-1.5"
+              className={`px-5 py-2.5 rounded-xl text-white font-bold text-xs shadow-md active:scale-95 transition cursor-pointer flex items-center gap-1.5 ${
+                isSelfTask
+                  ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/20'
+                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20'
+              }`}
             >
               <CheckSquare className="w-4 h-4" />
-              <span>{isEdit ? 'Save Changes' : 'Assign Task Now'}</span>
+              <span>
+                {isEdit
+                  ? 'Save Changes'
+                  : isSelfTask
+                  ? 'Submit to Admin for Verification (ভেরিফিকেশনে পাঠান)'
+                  : 'Assign Task Now'}
+              </span>
             </button>
           </div>
         </form>

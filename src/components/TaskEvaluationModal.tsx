@@ -63,8 +63,15 @@ export const TaskEvaluationModal: React.FC<TaskEvaluationModalProps> = ({
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Task Info Summary */}
           <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
-            <div className="font-bold text-sm text-slate-900 dark:text-white">
-              {task.title}
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-bold text-sm text-slate-900 dark:text-white">
+                {task.title}
+              </div>
+              {task.isSelfAssigned && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 shrink-0">
+                  ★ Self Entry
+                </span>
+              )}
             </div>
             <div className="text-slate-600 dark:text-slate-300">
               {task.description || 'No additional instructions provided.'}
@@ -79,6 +86,37 @@ export const TaskEvaluationModal: React.FC<TaskEvaluationModalProps> = ({
                 Created: {new Date(task.createdAt).toLocaleDateString()}
               </span>
             </div>
+          </div>
+
+          {/* Work Completion Status & Reported Problem */}
+          <div className="space-y-2 text-xs">
+            {task.allWorkCompleted !== undefined && (
+              <div
+                className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                  task.allWorkCompleted
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                    : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                }`}
+              >
+                <span className="font-bold">
+                  All Work Complete: {task.allWorkCompleted ? 'YES (সম্পূর্ণ শেষ)' : 'NO (বাকি আছে)'}
+                </span>
+                <span className="text-[10px] opacity-75">
+                  {task.allWorkCompleted ? 'Full Completion' : 'Partial / Incomplete'}
+                </span>
+              </div>
+            )}
+
+            {task.problemFaced && (
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs">
+                <span className="font-bold text-rose-800 dark:text-rose-300 block mb-0.5">
+                  ⚠️ কর্মীর উল্লেখিত সমস্যা (Reported Problem):
+                </span>
+                <p className="text-rose-900 dark:text-rose-100 italic">
+                  "{task.problemFaced}"
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Employee Submission Notes */}

@@ -94,6 +94,7 @@ export default function App() {
 
   // Modal states
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
+  const [isSelfTaskMode, setIsSelfTaskMode] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [evaluatingTask, setEvaluatingTask] = useState<Task | null>(null);
@@ -298,6 +299,7 @@ export default function App() {
     } else {
       // Creating new task
       const now = new Date().toISOString();
+      const isSelf = !!taskData.isSelfAssigned;
       const newTask: Task = {
         ...(taskData as any),
         id: `task_${Date.now()}`,
@@ -305,12 +307,15 @@ export default function App() {
         assignedByName: currentUser.name,
         assignedByRole: currentUser.role,
         createdAt: now,
-        status: 'pending',
+        status: isSelf ? 'submitted' : (taskData.status || 'pending'),
+        submittedAt: isSelf ? now : undefined,
         history: [
           {
             id: `h_${Date.now()}`,
             timestamp: now,
-            action: `Task created and assigned by ${currentUser.name} (${currentUser.role})`,
+            action: isSelf
+              ? `Self-initiated task reported by ${currentUser.name} and submitted for admin review & verification`
+              : `Task created and assigned by ${currentUser.name} (${currentUser.role})`,
             actorName: currentUser.name,
             actorRole: currentUser.role,
           },
@@ -335,14 +340,54 @@ export default function App() {
 
       // Immediately push to Firebase Cloud Firestore for other browsers & devices
       saveTaskCloud(newTask).catch(console.error);
-      showToast(`New task assigned to ${newTask.assignedToName} and synced to cloud`, 'success');
+      showToast(
+        isSelf
+          ? `Self-initiated task submitted to Admin for verification`
+          : `New task assigned to ${newTask.assignedToName} and synced to cloud`,
+        'success'
+      );
     }
 
     setIsTaskFormOpen(false);
     setEditingTask(null);
+    setIsSelfTaskMode(false);
   };
 
-  const handleUpdateTaskStatus = (taskId: string, newStatus: Task['status'], comment?: string) => {
+  const handleDeleteTask = async (taskId: string) => {
+    if (!currentUser) return;
+    if (currentUser.role !== 'admin' && currentUser.role !== 'master_admin') {
+      showToast('Only Admin or Master Admin can delete tasks', 'alert');
+      return;
+    }
+
+    const targetTask = tasks.find((t) => t.id === taskId);
+    const updated = tasks.filter((t) => t.id !== taskId);
+    setTasks(updated);
+    saveTasks(updated);
+
+    if (selectedTask?.id === taskId) setSelectedTask(null);
+    if (evaluatingTask?.id === taskId) setEvaluatingTask(null);
+    if (editingTask?.id === taskId) setEditingTask(null);
+
+    await deleteTaskCloud(taskId);
+    showToast(`Task "${targetTask?.title || 'Selected task'}" deleted permanently`, 'info');
+  };
+
+  const handleOpenCreateTask = (isSelf: boolean = false) => {
+    setEditingTask(null);
+    setIsSelfTaskMode(isSelf);
+    setIsTaskFormOpen(true);
+  };
+
+  const handleUpdateTaskStatus = (
+    taskId: string,
+    newStatus: Task['status'],
+    comment?: string,
+    details?: {
+      problemFaced?: string;
+      allWorkCompleted?: boolean;
+    }
+  ) => {
     if (!currentUser) return;
 
     const now = new Date();
@@ -363,11 +408,14 @@ export default function App() {
         let turnaroundDays = t.turnaroundDays;
         let turnaroundHours = t.turnaroundHours;
 
-        if (newStatus === 'submitted' && !t.submittedAt) {
+        if (newStatus === 'submitted') {
           updatedTaskObj = {
             ...t,
             status: newStatus,
-            submittedAt: now.toISOString(),
+            submittedAt: t.submittedAt || now.toISOString(),
+            employeeSubmissionNote: comment !== undefined ? comment : t.employeeSubmissionNote,
+            problemFaced: details?.problemFaced !== undefined ? details.problemFaced : t.problemFaced,
+            allWorkCompleted: details?.allWorkCompleted !== undefined ? details.allWorkCompleted : t.allWorkCompleted,
             history: [historyItem, ...(t.history || [])],
           };
           return updatedTaskObj;
@@ -755,16 +803,15 @@ export default function App() {
           <TaskBoard
             tasks={tasks}
             currentUser={currentUser}
-            onOpenCreate={() => {
-              setEditingTask(null);
-              setIsTaskFormOpen(true);
-            }}
+            onOpenCreate={handleOpenCreateTask}
             onSelectTask={(task) => setSelectedTask(task)}
             onOpenEvaluation={(task) => setEvaluatingTask(task)}
             onOpenEdit={(task) => {
               setEditingTask(task);
+              setIsSelfTaskMode(!!task.isSelfAssigned);
               setIsTaskFormOpen(true);
             }}
+            onDeleteTask={handleDeleteTask}
           />
         )}
 
@@ -824,11 +871,13 @@ export default function App() {
         onClose={() => {
           setIsTaskFormOpen(false);
           setEditingTask(null);
+          setIsSelfTaskMode(false);
         }}
         onSave={handleSaveTask}
         initialTask={editingTask}
         users={users}
         currentUser={currentUser}
+        defaultSelfTask={isSelfTaskMode}
       />
 
       <TaskDetailModal
@@ -845,8 +894,10 @@ export default function App() {
         onOpenEdit={(t) => {
           setSelectedTask(null);
           setEditingTask(t);
+          setIsSelfTaskMode(!!t.isSelfAssigned);
           setIsTaskFormOpen(true);
         }}
+        onDeleteTask={handleDeleteTask}
       />
 
       <TaskEvaluationModal
