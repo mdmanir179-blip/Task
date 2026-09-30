@@ -100,14 +100,7 @@ export default function App() {
   const handleSelectLanguage = (lang: Language) => {
     setCurrentLang(lang);
     saveLanguagePreference(lang);
-    showToast(
-      lang === 'en'
-        ? 'Language set to English'
-        : lang === 'bn'
-        ? 'ভাষা বাংলায় সেট করা হয়েছে'
-        : 'भाषा हिन्दी में सेट की गई',
-      'info'
-    );
+    showToast('Language set to English', 'info');
   };
 
   // Modal states

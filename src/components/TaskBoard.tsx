@@ -116,10 +116,10 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
               <button
                 onClick={() => onOpenCreate(true)}
                 className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-purple-500/20 active:scale-95 transition cursor-pointer"
-                title="Admin টাস্ক দিতে ভুলে গেলে বা নিজে কাজ করলে এন্ট্রি করে ভেরিফিকেশনে পাঠান"
+                title="Create a self-assigned task to submit for admin verification"
               >
                 <Plus className="w-4 h-4 stroke-[3]" />
-                <span>+ Self Task (স্ব-উদ্যোগে এন্ট্রি)</span>
+                <span>+ Self Task (Self Entry)</span>
               </button>
             </>
           )}

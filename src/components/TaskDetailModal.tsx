@@ -66,7 +66,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const handleEmployeeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (allWorkCompleted === null) {
-      alert('অনুগ্রহ করে "All work complete: Yes / No" নির্বাচন করুন (Please select whether all work is complete)');
+      alert('Please select whether all work is complete (Yes / No)');
       return;
     }
 
@@ -251,7 +251,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   )}
                   <div>
                     <span className="font-bold block text-xs">
-                      All Work Complete Status: {task.allWorkCompleted ? 'YES (সম্পূর্ণ কাজ শেষ)' : 'NO (কাজ আংশিক / বাকি আছে)'}
+                      All Work Complete Status: {task.allWorkCompleted ? 'YES (Fully Finished)' : 'NO (Work Remaining / Incomplete)'}
                     </span>
                     <span className="text-[11px] opacity-80 block">
                       {task.allWorkCompleted
@@ -270,7 +270,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                   <div>
                     <span className="text-xs font-bold text-rose-800 dark:text-rose-300 block mb-0.5">
-                      Reported Problem / কাজের সমস্যা (Employee Issue):
+                      Reported Problem / Employee Issue:
                     </span>
                     <p className="text-xs text-rose-900 dark:text-rose-100 font-medium whitespace-pre-line leading-relaxed">
                       "{task.problemFaced}"
@@ -431,13 +431,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   {/* Problem Faced Input Line */}
                   <div>
                     <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                      সমস্যা বা বাধা থাকলে লিখুন (Problem Faced - If Any):
+                      Problem Faced (If Any):
                     </label>
                     <input
                       type="text"
                       value={problemFaced}
                       onChange={(e) => setProblemFaced(e.target.value)}
-                      placeholder="কাজের সময় কোনো সমস্যা হয়েছিল কি? (মেশিন ত্রুটি, কাঁচামালের অভাব ইত্যাদি)..."
+                      placeholder="Describe any issues faced (machine faults, missing materials, delays, etc.)..."
                       className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
@@ -445,7 +445,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   {/* Mandatory Yes / No Selection for Work Completion */}
                   <div>
                     <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
-                      সব কাজ কি সম্পূর্ণ শেষ হয়েছে? (All Work Complete?) *
+                      Was all work completely finished? (All Work Complete?) *
                     </label>
                     <div className="grid grid-cols-2 gap-2.5">
                       <button
@@ -458,7 +458,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                         }`}
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        <span className="text-xs">Yes (সম্পূর্ণ শেষ)</span>
+                        <span className="text-xs">Yes (Fully Completed)</span>
                       </button>
 
                       <button
@@ -471,7 +471,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                         }`}
                       >
                         <XCircle className="w-4 h-4" />
-                        <span className="text-xs">No (কিছু বাকি আছে)</span>
+                        <span className="text-xs">No (Partially Completed)</span>
                       </button>
                     </div>
                   </div>
@@ -479,13 +479,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   {/* Optional Remarks Note */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      অতিরিক্ত নোট বা তথ্য (Remarks / Details)
+                      Additional Remarks / Output Details
                     </label>
                     <textarea
                       rows={2}
                       value={submissionNote}
                       onChange={(e) => setSubmissionNote(e.target.value)}
-                      placeholder="কাজের আউটপুট, ফাইল বা পণ্য ডেলিভারির বিবরণ..."
+                      placeholder="Provide details about the output, files, delivery, or handover..."
                       className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>

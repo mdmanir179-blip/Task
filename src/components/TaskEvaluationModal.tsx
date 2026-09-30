@@ -99,7 +99,7 @@ export const TaskEvaluationModal: React.FC<TaskEvaluationModalProps> = ({
                 }`}
               >
                 <span className="font-bold">
-                  All Work Complete: {task.allWorkCompleted ? 'YES (সম্পূর্ণ শেষ)' : 'NO (বাকি আছে)'}
+                  All Work Complete: {task.allWorkCompleted ? 'YES (Fully Finished)' : 'NO (Pending Work)'}
                 </span>
                 <span className="text-[10px] opacity-75">
                   {task.allWorkCompleted ? 'Full Completion' : 'Partial / Incomplete'}
@@ -110,7 +110,7 @@ export const TaskEvaluationModal: React.FC<TaskEvaluationModalProps> = ({
             {task.problemFaced && (
               <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs">
                 <span className="font-bold text-rose-800 dark:text-rose-300 block mb-0.5">
-                  ⚠️ কর্মীর উল্লেখিত সমস্যা (Reported Problem):
+                  ⚠️ Reported Problem / Issue:
                 </span>
                 <p className="text-rose-900 dark:text-rose-100 italic">
                   "{task.problemFaced}"

@@ -138,12 +138,12 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                 {isEdit
                   ? 'Edit Task Details'
                   : isSelfTask
-                  ? 'স্ব-উদ্যোগে টাস্ক এন্ট্রি (Self Task Entry)'
+                  ? 'Self Task Entry'
                   : 'Assign / Add Task'}
               </h3>
               <p className="text-xs text-indigo-100">
                 {isSelfTask
-                  ? 'এডমিন টাস্ক দিতে ভুলে গেলে বা নিজে কাজ করলে সরাসরি এন্ট্রি করে ভেরিফিকেশনে পাঠান'
+                  ? 'Enter tasks you completed independently to submit directly for admin verification'
                   : 'Assign daily operational task to colleagues'}
               </p>
             </div>
@@ -173,7 +173,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
-                ★ নিজে করা কাজ এন্ট্রি (Self Task)
+                ★ Self Task Entry
               </button>
               <button
                 type="button"
@@ -184,7 +184,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                 }`}
               >
-                অন্যকে টাস্ক দেওয়া (Assign Task)
+                Assign to Colleague
               </button>
             </div>
           )}
@@ -192,7 +192,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           {/* Self Task Notice Banner */}
           {isSelfTask && (
             <div className="p-3 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900 text-xs text-purple-900 dark:text-purple-200">
-              <strong>💡 সেলফ টাস্ক মোড:</strong> এই টাস্কটি সম্পন্ন হিসেবে সরাসরি অ্যাডমিনের কাছে ভেরিফিকেশন ও স্টার রেটিংয়ের জন্য জমা পড়বে।
+              <strong>💡 Self Task Mode:</strong> This task will be submitted directly to Admin for verification and performance rating.
             </div>
           )}
           {/* Title */}
@@ -286,20 +286,20 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1">
-                  কাজে কোনো সমস্যা হয়েছিল কি? (Problem Faced - if any):
+                  Problem Faced (if any):
                 </label>
                 <input
                   type="text"
                   value={problemFaced}
                   onChange={(e) => setProblemFaced(e.target.value)}
-                  placeholder="মেশিন ত্রুটি, কাঁচামালের অভাব বা অন্য কোনো সমস্যা থাকলে লিখুন..."
+                  placeholder="Machine fault, shortage of raw materials, or any other obstacle faced..."
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-1.5">
-                  সব কাজ কি সম্পূর্ণ শেষ হয়েছে? (All Work Complete?):
+                  Was all work completely finished? (All Work Complete?):
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
@@ -311,7 +311,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                         : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                     }`}
                   >
-                    <span>✓ Yes (সম্পূর্ণ শেষ)</span>
+                    <span>✓ Yes (Fully Completed)</span>
                   </button>
                   <button
                     type="button"
@@ -322,7 +322,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                         : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                     }`}
                   >
-                    <span>✕ No (বাকি আছে)</span>
+                    <span>✕ No (Pending / Remaining)</span>
                   </button>
                 </div>
               </div>
@@ -469,7 +469,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                 {isEdit
                   ? 'Save Changes'
                   : isSelfTask
-                  ? 'Submit to Admin for Verification (ভেরিফিকেশনে পাঠান)'
+                  ? 'Submit to Admin for Verification'
                   : 'Assign Task Now'}
               </span>
             </button>
