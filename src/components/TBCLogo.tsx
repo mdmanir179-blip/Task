@@ -1,4 +1,5 @@
 import React, { useId } from 'react';
+import logoPaths from './tbcLogoPaths.json';
 
 interface TBCLogoProps {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | number;
@@ -68,61 +69,28 @@ export const TBCLogo: React.FC<TBCLogoProps> = ({
       >
         <defs>
           <clipPath id={topClipId}>
-            <rect x="0" y="0" width="500" height="225" />
+            <rect x="0" y="0" width="500" height="233" />
           </clipPath>
           <clipPath id={bottomClipId}>
-            <rect x="0" y="265" width="500" height="235" />
+            <rect x="0" y="267" width="500" height="233" />
           </clipPath>
         </defs>
 
-        {/* Yellow Brand Background */}
-        <rect width="500" height="500" fill="#FFDE00" />
+        {/* Authentic Canary Yellow Background (#FEDB00) */}
+        <rect width="500" height="500" fill="#FEDB00" />
 
-        {/* Top Half of TBC */}
+        {/* Top Half of TBC Vector Paths */}
         <g clipPath={`url(#${topClipId})`}>
-          <text
-            x="250"
-            y="325"
-            fontFamily="system-ui, -apple-system, 'Arial Black', Impact, 'Montserrat', sans-serif"
-            fontWeight="900"
-            fontSize="182"
-            fill="#000000"
-            textAnchor="middle"
-            letterSpacing="4"
-          >
-            TBC
-          </text>
+          <path d={logoPaths.tbcCombinedPath} fill="#000000" />
         </g>
 
-        {/* Bottom Half of TBC */}
+        {/* Bottom Half of TBC Vector Paths */}
         <g clipPath={`url(#${bottomClipId})`}>
-          <text
-            x="250"
-            y="325"
-            fontFamily="system-ui, -apple-system, 'Arial Black', Impact, 'Montserrat', sans-serif"
-            fontWeight="900"
-            fontSize="182"
-            fill="#000000"
-            textAnchor="middle"
-            letterSpacing="4"
-          >
-            TBC
-          </text>
+          <path d={logoPaths.tbcCombinedPath} fill="#000000" />
         </g>
 
-        {/* Sliced center text: THE BROTHERS & CO. */}
-        <text
-          x="250"
-          y="253"
-          fontFamily="system-ui, -apple-system, 'Arial Black', Impact, 'Montserrat', sans-serif"
-          fontWeight="900"
-          fontSize="20.5"
-          fill="#000000"
-          textAnchor="middle"
-          letterSpacing="5"
-        >
-          THE BROTHERS &amp; CO.
-        </text>
+        {/* Center Sliced Gap: THE BROTHERS & CO. Vector Paths */}
+        <path d={logoPaths.subCombinedPath} fill="#000000" />
       </svg>
     </div>
   );
