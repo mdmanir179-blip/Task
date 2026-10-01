@@ -119,14 +119,19 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
   const todayKey = getLocalDateKey();
   const yesterdayKey = getYesterdayDateKey();
 
-  // Tasks relevant to current user
+  // Selected department filter for Daily Checklist tab (Admins default to 'all' so all tasks show)
+  const [checklistDepartmentFilter, setChecklistDepartmentFilter] = useState<Department | 'all'>(
+    isAdmin ? 'all' : currentUser.department
+  );
+
+  // Tasks relevant to current user or selected department
   const applicableTasks = useMemo(() => {
     return specialTasks.filter((task) => {
       if (!task.isActive) return false;
-      if (task.department === 'all') return true;
-      return task.department === currentUser.department;
+      if (checklistDepartmentFilter === 'all') return true;
+      return task.department === 'all' || task.department === checklistDepartmentFilter;
     });
-  }, [specialTasks, currentUser.department]);
+  }, [specialTasks, checklistDepartmentFilter]);
 
   // Today's completions for current user
   const myTodayCompletionsMap = useMemo(() => {
@@ -182,6 +187,19 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
   const [previewChecklistTask, setPreviewChecklistTask] = useState<SpecialTask | null>(null);
   const [taskToDelete, setTaskToDelete] = useState<SpecialTask | null>(null);
   const [isDeletingTask, setIsDeletingTask] = useState(false);
+
+  // Drill-down inspection states for checking daily employee task completions
+  const [selectedTaskSubmissions, setSelectedTaskSubmissions] = useState<{
+    task: SpecialTask;
+    dateKey: string;
+  } | null>(null);
+  const [selectedEmployeeDetail, setSelectedEmployeeDetail] = useState<{
+    employee: User;
+    dateKey: string;
+  } | null>(null);
+  const [complianceViewMode, setComplianceViewMode] = useState<'by_employee' | 'detailed_rows'>('by_employee');
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
+  const [taskSubmissionsTab, setTaskSubmissionsTab] = useState<'all' | 'completed' | 'pending'>('all');
 
   // Filtered Special Tasks for Admin Management Table
   const filteredAdminSpecialTasks = useMemo(() => {
@@ -348,10 +366,17 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
   const reportEmployees = useMemo(() => {
     return users.filter((u) => {
       if (u.role === 'master_admin') return false; // Master admin manages, not subjected
-      if (reportDepartment === 'all') return true;
-      return u.department === reportDepartment;
+      if (reportDepartment !== 'all' && u.department !== reportDepartment) return false;
+      if (employeeSearchQuery.trim()) {
+        const q = employeeSearchQuery.toLowerCase();
+        const matchName = u.name.toLowerCase().includes(q);
+        const matchPhone = u.phone.toLowerCase().includes(q);
+        const matchId = (u.employeeId || '').toLowerCase().includes(q);
+        if (!matchName && !matchPhone && !matchId) return false;
+      }
+      return true;
     });
-  }, [users, reportDepartment]);
+  }, [users, reportDepartment, employeeSearchQuery]);
 
   const activeSpecialTasksForReport = useMemo(() => {
     return specialTasks.filter((t) => t.isActive);
@@ -533,47 +558,102 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
             </div>
           </div>
 
-          {/* If window is closed and not in test mode */}
+          {/* Department Filter Bar for Daily Checklist */}
+          <div className="flex items-center justify-between flex-wrap gap-2 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 mr-1">
+                <Filter className="w-3.5 h-3.5 text-amber-500" />
+                <span>Department:</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setChecklistDepartmentFilter('all')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  checklistDepartmentFilter === 'all'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                All Departments ({specialTasks.filter((t) => t.isActive).length})
+              </button>
+              {(['backoffice', 'printing', 'warehouse', 'admin', 'housekeeping'] as Department[]).map((dept) => {
+                const count = specialTasks.filter((t) => t.isActive && (t.department === 'all' || t.department === dept)).length;
+                return (
+                  <button
+                    key={dept}
+                    type="button"
+                    onClick={() => setChecklistDepartmentFilter(dept)}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold capitalize transition cursor-pointer ${
+                      checklistDepartmentFilter === dept
+                        ? 'bg-indigo-600 text-white font-black shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {dept} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={handleOpenCreateTask}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Special Task</span>
+              </button>
+            )}
+          </div>
+
+          {/* Time window status notice if outside 6:30 AM to 12:00 AM */}
           {!isWindowActive && (
-            <div className="p-8 text-center rounded-3xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-              <Clock className="w-12 h-12 mx-auto text-amber-500 mb-3 animate-pulse" />
-              <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                Routine Tasks Window Currently Closed
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
-                Special tasks automatically appear at <strong>6:30 AM</strong> every morning and remain open until
-                <strong> 12:00 AM (midnight)</strong>. Current time is {timeWindow.currentTimeStr}.
-              </p>
-              {isAdmin && (
-                <button
-                  onClick={() => setTestModeAlwaysOpen(true)}
-                  className="mt-4 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-md transition cursor-pointer"
-                >
-                  Enable Test Mode to Open Now
-                </button>
-              )}
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-5 h-5 text-amber-600 shrink-0" />
+                <p className="text-xs text-amber-900 dark:text-amber-200">
+                  <strong>Daily Window Notice:</strong> Routine tasks open at <strong>06:30 AM</strong> and close at <strong>12:00 AM</strong>. Current time: {timeWindow.currentTimeStr}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTestModeAlwaysOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs transition shrink-0 cursor-pointer"
+              >
+                Enable Anytime Test Mode
+              </button>
             </div>
           )}
 
           {/* List of Applicable Special Tasks */}
-          {isWindowActive && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {applicableTasks.length === 0 ? (
-                <div className="col-span-full p-8 text-center rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <Sparkles className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-                  <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                    No active routine tasks assigned for your department.
-                  </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {applicableTasks.length === 0 ? (
+              <div className="col-span-full p-8 text-center rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                <Sparkles className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  No active routine tasks found for the selected department filter.
+                </p>
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setChecklistDepartmentFilter('all')}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                  >
+                    View All Departments ({specialTasks.filter((t) => t.isActive).length} Tasks)
+                  </button>
                   {isAdmin && (
                     <button
+                      type="button"
                       onClick={handleOpenCreateTask}
-                      className="mt-3 px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs shadow-md transition cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs shadow-xs transition cursor-pointer"
                     >
                       + Add New Special Task
                     </button>
                   )}
                 </div>
-              ) : (
+              </div>
+            ) : (
                 applicableTasks.map((task) => {
                   const completion = myTodayCompletionsMap.get(task.id);
                   const isDone = !!completion;
@@ -703,9 +783,8 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
                 })
               )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
       {/* TAB 2: MASTER ADMIN CONFIG & DAILY COMPLIANCE REPORT */}
       {isAdmin && activeSubTab === 'management' && (
@@ -897,27 +976,48 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
                             </button>
                           </td>
 
-                          {/* Today's completion stats */}
-                          <td className="py-3 px-3.5 min-w-[130px]">
-                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                              <span>
-                                {stats.completed} of {stats.total} Staff
+                          {/* Today's completion stats - Click to see which employees completed */}
+                          <td className="py-3 px-3.5 min-w-[140px]">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTaskSubmissions({ task, dateKey: todayKey })}
+                              className="w-full text-left group/sub cursor-pointer hover:opacity-90 transition"
+                              title="Click to see which employees completed this task today"
+                            >
+                              <div className="flex items-center justify-between text-[10px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                <span className="group-hover/sub:text-indigo-600 dark:group-hover/sub:text-indigo-400 flex items-center gap-1 font-semibold">
+                                  <span>{stats.completed} of {stats.total} Staff</span>
+                                  <Eye className="w-3 h-3 text-slate-400 group-hover/sub:text-indigo-500" />
+                                </span>
+                                <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+                                  {stats.percentage}%
+                                </span>
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-300"
+                                  style={{ width: `${stats.percentage}%` }}
+                                />
+                              </div>
+                              <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-bold group-hover/sub:underline block mt-0.5">
+                                View Submissions &rarr;
                               </span>
-                              <span className="font-mono text-indigo-600 dark:text-indigo-400">
-                                {stats.percentage}%
-                              </span>
-                            </div>
-                            <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                              <div
-                                className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all duration-300"
-                                style={{ width: `${stats.percentage}%` }}
-                              />
-                            </div>
+                            </button>
                           </td>
 
-                          {/* Actions: Edit & Delete */}
+                          {/* Actions: View Submissions, Edit & Delete */}
                           <td className="py-3 px-3.5 text-right">
                             <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTaskSubmissions({ task, dateKey: todayKey })}
+                                className="p-1.5 sm:px-2 sm:py-1 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/80 text-amber-800 dark:text-amber-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                title="View who completed this task"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-amber-600" />
+                                <span className="hidden xl:inline">Submissions</span>
+                              </button>
+
                               <button
                                 onClick={() => handleOpenEditTask(task)}
                                 className="p-1.5 sm:px-2.5 sm:py-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
@@ -946,21 +1046,49 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
             </div>
           </div>
 
-          {/* Daily Employee Compliance & Submission Log Table */}
-          <div className="mt-8 p-5 sm:p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+          {/* Daily Employee Compliance & Submission Log Section */}
+          <div className="mt-8 p-5 sm:p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md space-y-4">
+            {/* Header & Controls */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
               <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-                  <Users className="w-4 h-4 text-indigo-500" />
-                  <span>Daily Staff Compliance &amp; Submission Log</span>
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Users className="w-5 h-5 text-indigo-500" />
+                  <span>Daily Staff Special Task Compliance Log</span>
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Real-time status of each employee for the selected day. Shows who completed on time and who missed.
+                  Click on any employee to view their full daily task completions, submission notes, and checklist items.
                 </p>
               </div>
 
-              {/* Filters */}
-              <div className="flex items-center gap-2 flex-wrap">
+              {/* Filters & View Toggle */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Quick Date Presets */}
+                <div className="flex items-center gap-1 p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setReportDate(todayKey)}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      reportDate === todayKey
+                        ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    Today
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReportDate(yesterdayKey)}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                      reportDate === yesterdayKey
+                        ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    Yesterday
+                  </button>
+                </div>
+
+                {/* Custom Date Input */}
                 <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
                   <input
@@ -971,107 +1099,342 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
                   />
                 </div>
 
+                {/* Search Employee */}
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <Search className="w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={employeeSearchQuery}
+                    onChange={(e) => setEmployeeSearchQuery(e.target.value)}
+                    placeholder="Search staff..."
+                    className="bg-transparent text-xs text-slate-900 dark:text-white outline-none w-24 sm:w-28 font-medium"
+                  />
+                  {employeeSearchQuery && (
+                    <button onClick={() => setEmployeeSearchQuery('')} className="text-slate-400 hover:text-slate-600">
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Department filter */}
                 <select
                   value={reportDepartment}
                   onChange={(e) => setReportDepartment(e.target.value as any)}
                   className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white outline-none cursor-pointer"
                 >
-                  <option value="all">All Departments</option>
+                  <option value="all">All Depts</option>
                   <option value="backoffice">Backoffice</option>
                   <option value="printing">Printing</option>
                   <option value="warehouse">Warehouse</option>
                   <option value="admin">Admin</option>
                   <option value="housekeeping">Housekeeping</option>
                 </select>
+
+                {/* View Switcher: By Employee vs Table Rows */}
+                <div className="flex items-center gap-1 p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setComplianceViewMode('by_employee')}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                      complianceViewMode === 'by_employee'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    <Users className="w-3 h-3" />
+                    <span className="hidden sm:inline">By Employee</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setComplianceViewMode('detailed_rows')}
+                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                      complianceViewMode === 'detailed_rows'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText className="w-3 h-3" />
+                    <span className="hidden sm:inline">Row Table</span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Table of staff compliance */}
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                    <th className="py-3 px-3">Employee</th>
-                    <th className="py-3 px-3">Department</th>
-                    <th className="py-3 px-3">Special Task</th>
-                    <th className="py-3 px-3">Status</th>
-                    <th className="py-3 px-3">Completion Time</th>
-                    <th className="py-3 px-3">Remarks / Note</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {reportEmployees.flatMap((emp) => {
+            {/* VIEW 1: BY EMPLOYEE CARDS (CLICK TO VIEW FULL BREAKDOWN) */}
+            {complianceViewMode === 'by_employee' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {reportEmployees.length === 0 ? (
+                  <div className="col-span-full py-12 text-center text-slate-400">
+                    <Users className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                    <p className="font-bold text-slate-700 dark:text-slate-300">No staff members match the selected filters.</p>
+                  </div>
+                ) : (
+                  reportEmployees.map((emp) => {
                     const empTasks = activeSpecialTasksForReport.filter(
                       (t) => t.department === 'all' || t.department === emp.department
                     );
+                    const empCompletions = completions.filter(
+                      (c) => c.employeeId === emp.id && c.dateKey === reportDate && c.status === 'completed'
+                    );
+                    const completedCount = empCompletions.length;
+                    const totalCount = empTasks.length;
+                    const isAllDone = totalCount > 0 && completedCount === totalCount;
+                    const hasPending = completedCount < totalCount;
+                    const isPastDate = reportDate < todayKey;
+                    const deptConfig = getDepartmentConfig(emp.department);
 
-                    if (empTasks.length === 0) {
-                      return [
-                        <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                          <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{emp.name}</td>
-                          <td className="py-3 px-3 capitalize text-slate-500">{emp.department}</td>
-                          <td className="py-3 px-3 text-slate-400 italic" colSpan={4}>
-                            No tasks assigned to department
-                          </td>
-                        </tr>,
-                      ];
-                    }
+                    return (
+                      <div
+                        key={emp.id}
+                        onClick={() => setSelectedEmployeeDetail({ employee: emp, dateKey: reportDate })}
+                        className={`p-4 rounded-3xl border-2 transition-all flex flex-col justify-between cursor-pointer hover:shadow-lg hover:-translate-y-0.5 group ${
+                          isAllDone
+                            ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
+                            : hasPending && isPastDate
+                            ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900'
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500'
+                        }`}
+                      >
+                        <div>
+                          {/* Employee Header */}
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                className="w-10 h-10 rounded-2xl flex items-center justify-center font-black text-white text-sm shrink-0 shadow-sm"
+                                style={{ backgroundColor: emp.avatarColor || '#6366f1' }}
+                              >
+                                {emp.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <h4 className="font-extrabold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                  {emp.name}
+                                </h4>
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                                  <span className="font-mono">{emp.employeeId || emp.phone}</span>
+                                  <span>•</span>
+                                  <span className="capitalize">{emp.designation || 'Staff'}</span>
+                                </div>
+                              </div>
+                            </div>
 
-                    return empTasks.map((t) => {
-                      const comp = completions.find(
-                        (c) => c.employeeId === emp.id && c.specialTaskId === t.id && c.dateKey === reportDate
-                      );
-                      const isCompleted = comp && comp.status === 'completed';
-                      const isPastDate = reportDate < todayKey;
-                      const isMissed = !isCompleted && isPastDate;
-
-                      return (
-                        <tr key={`${emp.id}_${t.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                          <td className="py-3 px-3">
-                            <div className="font-bold text-slate-900 dark:text-white">{emp.name}</div>
-                            <div className="text-[10px] text-slate-400 font-mono">{emp.employeeId || emp.phone}</div>
-                          </td>
-                          <td className="py-3 px-3 capitalize">
-                            <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-semibold text-[10px]">
-                              {emp.department}
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${deptConfig.bgLight} ${deptConfig.bgDark} ${deptConfig.border}`}
+                            >
+                              {deptConfig.label}
                             </span>
-                          </td>
-                          <td className="py-3 px-3 font-medium text-slate-800 dark:text-slate-200">
-                            {t.title}
-                          </td>
-                          <td className="py-3 px-3">
-                            {isCompleted ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold text-[10px]">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                <span>Completed</span>
+                          </div>
+
+                          {/* Progress bar */}
+                          <div className="mt-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center justify-between text-[11px] font-bold mb-1.5">
+                              <span className="text-slate-600 dark:text-slate-300">Daily Special Tasks:</span>
+                              <span
+                                className={`font-mono ${
+                                  isAllDone
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : hasPending && isPastDate
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : 'text-amber-600 dark:text-amber-400'
+                                }`}
+                              >
+                                {completedCount} / {totalCount} Done
                               </span>
-                            ) : isMissed ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-bold text-[10px]">
-                                <AlertTriangle className="w-3 h-3 text-rose-600" />
-                                <span>Missed Day</span>
-                              </span>
+                            </div>
+                            <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-300 ${
+                                  isAllDone
+                                    ? 'bg-emerald-500'
+                                    : hasPending && isPastDate
+                                    ? 'bg-rose-500'
+                                    : 'bg-amber-500'
+                                }`}
+                                style={{
+                                  width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Routine Tasks Checklist Preview */}
+                          <div className="mt-3 space-y-1.5">
+                            {empTasks.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 italic">No special routine tasks configured.</p>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold text-[10px]">
-                                <Clock className="w-3 h-3 text-amber-600" />
-                                <span>Pending Today</span>
-                              </span>
+                              empTasks.slice(0, 3).map((task) => {
+                                const comp = empCompletions.find((c) => c.specialTaskId === task.id);
+                                const done = !!comp;
+
+                                return (
+                                  <div
+                                    key={task.id}
+                                    className={`p-2 rounded-xl text-xs flex items-center justify-between gap-2 border ${
+                                      done
+                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border-emerald-200 dark:border-emerald-900'
+                                        : isPastDate
+                                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 border-rose-200 dark:border-rose-900'
+                                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      {done ? (
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                      ) : isPastDate ? (
+                                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                      ) : (
+                                        <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                      )}
+                                      <span className="font-semibold truncate">{task.title}</span>
+                                    </div>
+                                    <span className="text-[10px] font-mono shrink-0 font-bold">
+                                      {done && comp.completedAt
+                                        ? new Date(comp.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                        : isPastDate
+                                        ? 'Missed'
+                                        : 'Pending'}
+                                    </span>
+                                  </div>
+                                );
+                              })
                             )}
-                          </td>
-                          <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
-                            {comp?.completedAt
-                              ? new Date(comp.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                              : '—'}
-                          </td>
-                          <td className="py-3 px-3 text-slate-600 dark:text-slate-300 max-w-xs truncate">
-                            {comp?.notes ? `"${comp.notes}"` : '—'}
-                          </td>
-                        </tr>
+                            {empTasks.length > 3 && (
+                              <p className="text-[10px] text-slate-400 text-center font-semibold pt-0.5">
+                                + {empTasks.length - 3} more tasks (Click to see all)
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Card bottom click CTA */}
+                        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                          <span className="text-[11px] font-semibold text-slate-400">Date: {reportDate}</span>
+                          <span className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 group-hover:underline">
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>View Full Details &rarr;</span>
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* VIEW 2: DETAILED TABLE ROWS */}
+            {complianceViewMode === 'detailed_rows' && (
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-black uppercase tracking-wider text-[10px]">
+                      <th className="py-3 px-3">Employee</th>
+                      <th className="py-3 px-3">Department</th>
+                      <th className="py-3 px-3">Special Task</th>
+                      <th className="py-3 px-3">Status</th>
+                      <th className="py-3 px-3">Completion Time</th>
+                      <th className="py-3 px-3">Remarks / Note</th>
+                      <th className="py-3 px-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                    {reportEmployees.flatMap((emp) => {
+                      const empTasks = activeSpecialTasksForReport.filter(
+                        (t) => t.department === 'all' || t.department === emp.department
                       );
-                    });
-                  })}
-                </tbody>
-              </table>
-            </div>
+
+                      if (empTasks.length === 0) {
+                        return [
+                          <tr key={emp.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                            <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{emp.name}</td>
+                            <td className="py-3 px-3 capitalize text-slate-500">{emp.department}</td>
+                            <td className="py-3 px-3 text-slate-400 italic" colSpan={4}>
+                              No special tasks assigned to department
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedEmployeeDetail({ employee: emp, dateKey: reportDate })}
+                                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
+                              >
+                                View
+                              </button>
+                            </td>
+                          </tr>,
+                        ];
+                      }
+
+                      return empTasks.map((t) => {
+                        const comp = completions.find(
+                          (c) => c.employeeId === emp.id && c.specialTaskId === t.id && c.dateKey === reportDate
+                        );
+                        const isCompleted = comp && comp.status === 'completed';
+                        const isPastDate = reportDate < todayKey;
+                        const isMissed = !isCompleted && isPastDate;
+
+                        return (
+                          <tr
+                            key={`${emp.id}_${t.id}`}
+                            className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition cursor-pointer"
+                            onClick={() => setSelectedEmployeeDetail({ employee: emp, dateKey: reportDate })}
+                          >
+                            <td className="py-3 px-3">
+                              <div className="font-bold text-slate-900 dark:text-white">{emp.name}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">{emp.employeeId || emp.phone}</div>
+                            </td>
+                            <td className="py-3 px-3 capitalize">
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 font-semibold text-[10px]">
+                                {emp.department}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 font-medium text-slate-800 dark:text-slate-200 max-w-xs truncate">
+                              {t.title}
+                            </td>
+                            <td className="py-3 px-3">
+                              {isCompleted ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold text-[10px]">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  <span>Completed</span>
+                                </span>
+                              ) : isMissed ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-bold text-[10px]">
+                                  <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                  <span>Missed Day</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold text-[10px]">
+                                  <Clock className="w-3 h-3 text-amber-600" />
+                                  <span>Pending Today</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
+                              {comp?.completedAt
+                                ? new Date(comp.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                : '—'}
+                            </td>
+                            <td className="py-3 px-3 text-slate-600 dark:text-slate-300 max-w-xs truncate">
+                              {comp?.notes ? `"${comp.notes}"` : '—'}
+                            </td>
+                            <td className="py-3 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedEmployeeDetail({ employee: emp, dateKey: reportDate });
+                                }}
+                                className="px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition flex items-center gap-1 ml-auto cursor-pointer"
+                              >
+                                <Eye className="w-3 h-3 text-indigo-500" />
+                                <span>Details</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1436,6 +1799,465 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>{isDeletingTask ? 'Deleting...' : 'Delete Permanently'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: Employee Daily Special Tasks Inspection Modal (Click to View Complete Details) */}
+      {selectedEmployeeDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 relative max-h-[90vh] overflow-y-auto">
+            {/* Header with Employee Profile and Date Switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white text-base shadow-md shrink-0"
+                  style={{ backgroundColor: selectedEmployeeDetail.employee.avatarColor || '#6366f1' }}
+                >
+                  {selectedEmployeeDetail.employee.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                      {selectedEmployeeDetail.employee.name}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 capitalize">
+                      {selectedEmployeeDetail.employee.department}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    <span className="font-mono">{selectedEmployeeDetail.employee.phone}</span>
+                    <span>•</span>
+                    <span className="capitalize">{selectedEmployeeDetail.employee.designation || 'Employee'}</span>
+                    {selectedEmployeeDetail.employee.employeeId && (
+                      <>
+                        <span>•</span>
+                        <span className="font-mono font-bold">{selectedEmployeeDetail.employee.employeeId}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Date Switcher directly inside modal */}
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="date"
+                    value={selectedEmployeeDetail.dateKey}
+                    onChange={(e) =>
+                      setSelectedEmployeeDetail({
+                        ...selectedEmployeeDetail,
+                        dateKey: e.target.value,
+                      })
+                    }
+                    className="bg-transparent text-xs font-bold text-slate-900 dark:text-white outline-none cursor-pointer"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedEmployeeDetail(null)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body: Calculations for this employee on selected date */}
+            {(() => {
+              const emp = selectedEmployeeDetail.employee;
+              const dateK = selectedEmployeeDetail.dateKey;
+              const applicable = specialTasks.filter(
+                (t) => t.isActive && (t.department === 'all' || t.department === emp.department)
+              );
+              const empCompletions = completions.filter(
+                (c) => c.employeeId === emp.id && c.dateKey === dateK && c.status === 'completed'
+              );
+              const compCount = empCompletions.length;
+              const totalCount = applicable.length;
+              const isPast = dateK < todayKey;
+              const allDone = totalCount > 0 && compCount === totalCount;
+
+              return (
+                <div className="mt-4 space-y-4">
+                  {/* Summary Metric Banner */}
+                  <div
+                    className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${
+                      allDone
+                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+                        : isPast && compCount < totalCount
+                        ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900'
+                        : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900'
+                    }`}
+                  >
+                    <div>
+                      <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                        Routine Tasks Performance for {new Date(dateK + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                      <span className="text-[11px] text-slate-600 dark:text-slate-300">
+                        {allDone
+                          ? 'All special daily tasks were completed on time.'
+                          : isPast
+                          ? `Missed ${totalCount - compCount} required task(s) for this day.`
+                          : `${totalCount - compCount} task(s) remaining for today.`}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black font-mono">
+                        {compCount} / {totalCount} Done
+                      </span>
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-xs font-black ${
+                          allDone
+                            ? 'bg-emerald-600 text-white'
+                            : isPast
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-amber-500 text-slate-950'
+                        }`}
+                      >
+                        {totalCount > 0 ? Math.round((compCount / totalCount) * 100) : 0}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* List of Special Tasks with Verification */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">
+                      Tasks Assigned &amp; Completion Status ({applicable.length})
+                    </h4>
+
+                    {applicable.length === 0 ? (
+                      <div className="p-6 text-center text-slate-400 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                        No special tasks applicable for this employee's department.
+                      </div>
+                    ) : (
+                      applicable.map((task) => {
+                        const comp = empCompletions.find((c) => c.specialTaskId === task.id);
+                        const isDone = !!comp;
+                        const missed = !isDone && isPast;
+
+                        return (
+                          <div
+                            key={task.id}
+                            className={`p-4 rounded-2xl border-2 transition-all ${
+                              isDone
+                                ? 'bg-white dark:bg-slate-900 border-emerald-300 dark:border-emerald-800 shadow-xs'
+                                : missed
+                                ? 'bg-white dark:bg-slate-900 border-rose-300 dark:border-rose-900'
+                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            {/* Task Title & Status Pill */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h5 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                                    {task.title}
+                                  </h5>
+                                  {task.mandatory && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900">
+                                      Mandatory
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                  {task.description || 'Daily operational requirement'}
+                                </p>
+                              </div>
+
+                              <span
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-black shrink-0 flex items-center gap-1 ${
+                                  isDone
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                    : missed
+                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300 dark:border-rose-800'
+                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                                }`}
+                              >
+                                {isDone ? (
+                                  <>
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                    <span>
+                                      Completed at{' '}
+                                      {comp?.completedAt
+                                        ? new Date(comp.completedAt).toLocaleTimeString([], {
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })
+                                        : 'Done'}
+                                    </span>
+                                  </>
+                                ) : missed ? (
+                                  <>
+                                    <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                    <span>Missed (Past Cutoff)</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock className="w-3 h-3 text-amber-600" />
+                                    <span>Pending Today</span>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+
+                            {/* Checklist steps breakdown */}
+                            {task.checklist && task.checklist.length > 0 && (
+                              <div className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1.5">
+                                  Checklist Verification:
+                                </span>
+                                <div className="space-y-1">
+                                  {task.checklist.map((item) => {
+                                    const isChecked = comp?.checkedItemIds?.includes(item.id);
+                                    return (
+                                      <div
+                                        key={item.id}
+                                        className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
+                                      >
+                                        {isChecked ? (
+                                          <CheckSquare className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                        ) : (
+                                          <Square className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                        )}
+                                        <span className={isChecked ? 'font-medium' : 'text-slate-400'}>
+                                          {item.text}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Employee Submitted Remarks / Notes */}
+                            {comp?.notes && (
+                              <div className="mt-3 p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900 text-xs">
+                                <span className="font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5 mb-0.5">
+                                  <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span>Employee Remark / Notes:</span>
+                                </span>
+                                <p className="italic text-slate-700 dark:text-slate-300 mt-1 pl-5">
+                                  "{comp.notes}"
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Modal Footer */}
+            <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-400">
+                Daily Window: <strong>06:30 AM – 12:00 AM</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedEmployeeDetail(null)}
+                className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: Task Submissions by Staff Modal (Opens when clicking Submissions in Table) */}
+      {selectedTaskSubmissions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 relative max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider">
+                  Special Routine Task Submissions
+                </span>
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                  {selectedTaskSubmissions.task.title}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Scope: {selectedTaskSubmissions.task.department === 'all' ? 'All Employees' : selectedTaskSubmissions.task.department} • Date: {selectedTaskSubmissions.dateKey}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedTaskSubmissions(null)}
+                className="p-1 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Calculations & Tabs */}
+            {(() => {
+              const currentTask = selectedTaskSubmissions.task;
+              const dateK = selectedTaskSubmissions.dateKey;
+              const eligibleEmployees = users.filter((u) => {
+                if (u.role === 'master_admin') return false;
+                if (currentTask.department === 'all') return true;
+                return u.department === currentTask.department;
+              });
+
+              const completedStaffMap = new Map<string, SpecialTaskCompletion>();
+              completions
+                .filter(
+                  (c) =>
+                    c.specialTaskId === currentTask.id && c.dateKey === dateK && c.status === 'completed'
+                )
+                .forEach((c) => completedStaffMap.set(c.employeeId, c));
+
+              const filteredList = eligibleEmployees.filter((emp) => {
+                const isDone = completedStaffMap.has(emp.id);
+                if (taskSubmissionsTab === 'completed') return isDone;
+                if (taskSubmissionsTab === 'pending') return !isDone;
+                return true;
+              });
+
+              return (
+                <div className="mt-4 space-y-4">
+                  {/* Status Tabs */}
+                  <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setTaskSubmissionsTab('all')}
+                      className={`flex-1 py-1.5 rounded-xl transition cursor-pointer text-center ${
+                        taskSubmissionsTab === 'all'
+                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs font-black'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                    >
+                      All Staff ({eligibleEmployees.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTaskSubmissionsTab('completed')}
+                      className={`flex-1 py-1.5 rounded-xl transition cursor-pointer text-center ${
+                        taskSubmissionsTab === 'completed'
+                          ? 'bg-emerald-600 text-white shadow-xs font-black'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                    >
+                      Completed ({completedStaffMap.size})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTaskSubmissionsTab('pending')}
+                      className={`flex-1 py-1.5 rounded-xl transition cursor-pointer text-center ${
+                        taskSubmissionsTab === 'pending'
+                          ? 'bg-amber-500 text-slate-950 shadow-xs font-black'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                    >
+                      Pending ({eligibleEmployees.length - completedStaffMap.size})
+                    </button>
+                  </div>
+
+                  {/* List of Staff with their completion status */}
+                  <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                    {filteredList.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-8">
+                        No employees found in this tab.
+                      </p>
+                    ) : (
+                      filteredList.map((emp) => {
+                        const comp = completedStaffMap.get(emp.id);
+                        const isDone = !!comp;
+
+                        return (
+                          <div
+                            key={emp.id}
+                            className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                              isDone
+                                ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800'
+                                : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div
+                                className="w-9 h-9 rounded-xl flex items-center justify-center font-black text-white text-xs shrink-0"
+                                style={{ backgroundColor: emp.avatarColor || '#6366f1' }}
+                              >
+                                {emp.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <h5 className="font-extrabold text-xs text-slate-900 dark:text-white truncate">
+                                  {emp.name}
+                                </h5>
+                                <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
+                                  <span className="capitalize">{emp.department}</span>
+                                  <span>•</span>
+                                  <span className="font-mono">{emp.phone}</span>
+                                </div>
+                                {comp?.notes && (
+                                  <p className="text-[11px] text-slate-600 dark:text-slate-300 italic truncate mt-0.5 max-w-xs">
+                                    "{comp.notes}"
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              {isDone ? (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  <span>
+                                    {comp.completedAt
+                                      ? new Date(comp.completedAt).toLocaleTimeString([], {
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })
+                                      : 'Completed'}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-amber-600" />
+                                  <span>Pending</span>
+                                </span>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedTaskSubmissions(null);
+                                  setSelectedEmployeeDetail({ employee: emp, dateKey: dateK });
+                                }}
+                                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
+                                title="View All Tasks for this Employee"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-indigo-500" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Footer */}
+            <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedTaskSubmissions(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>
