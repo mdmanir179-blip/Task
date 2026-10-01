@@ -35,7 +35,7 @@ export const TaskNotificationCard: React.FC<TaskNotificationCardProps> = ({
   const priorityConfig = (task?.priority && PRIORITY_CONFIG[task.priority]) || PRIORITY_CONFIG.medium;
 
   return (
-    <div className="fixed top-20 right-4 z-50 max-w-sm sm:max-w-md w-full animate-bounce-short pointer-events-auto">
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 sm:top-20 sm:left-auto sm:right-4 sm:translate-x-0 z-50 max-w-[92vw] sm:max-w-md w-full animate-bounce-short pointer-events-auto">
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border-2 border-amber-400 dark:border-amber-500/80 p-4 relative overflow-hidden ring-4 ring-amber-400/20">
         {/* Glow Accent Bar */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-yellow-400 to-indigo-600" />

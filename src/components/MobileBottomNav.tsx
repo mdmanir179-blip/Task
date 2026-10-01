@@ -1,22 +1,18 @@
 import React from 'react';
 import {
   Layers,
+  Sparkles,
   Building2,
   FileSpreadsheet,
   BarChart3,
   Users,
-  LogOut,
-  Moon,
-  Sun,
-  ShieldCheck,
-  UserCheck,
 } from 'lucide-react';
-import { User, DEPARTMENT_CONFIG } from '../types';
+import { User } from '../types';
 import { Language, t } from '../utils/i18n';
 
 interface MobileBottomNavProps {
-  activeTab: 'tasks' | 'directory' | 'forms' | 'analytics' | 'users';
-  setActiveTab: (tab: 'tasks' | 'directory' | 'forms' | 'analytics' | 'users') => void;
+  activeTab: 'tasks' | 'special_tasks' | 'directory' | 'forms' | 'analytics' | 'users';
+  setActiveTab: (tab: 'tasks' | 'special_tasks' | 'directory' | 'forms' | 'analytics' | 'users') => void;
   currentUser: User | null;
   taskCounts: {
     pending: number;
@@ -64,6 +60,25 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           </span>
           {activeTab === 'tasks' && (
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 mt-0.5" />
+          )}
+        </button>
+
+        {/* Tab 1.5: Special Tasks (06:30 AM - 12:00 AM) */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('special_tasks')}
+          className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all relative ${
+            activeTab === 'special_tasks'
+              ? 'text-amber-500 font-bold'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Sparkles className={`w-5 h-5 ${activeTab === 'special_tasks' ? 'scale-110 text-amber-500' : ''} transition-transform`} />
+          <span className="text-[10px] mt-0.5 tracking-tight font-medium">
+            Routine
+          </span>
+          {activeTab === 'special_tasks' && (
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-0.5" />
           )}
         </button>
 

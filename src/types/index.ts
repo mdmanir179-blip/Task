@@ -90,6 +90,44 @@ export interface ImportantForm {
   submissionsCount?: number;
 }
 
+export interface SpecialTaskChecklistItem {
+  id: string;
+  text: string;
+}
+
+export interface SpecialTask {
+  id: string;
+  title: string;
+  description: string;
+  department: Department | 'all';
+  targetRole?: UserRole | 'all';
+  isActive: boolean;
+  checklist?: SpecialTaskChecklistItem[];
+  mandatory: boolean;
+  startTime: string; // '06:30' (6:30 AM)
+  endTime: string; // '00:00' (12:00 AM midnight)
+  createdById: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SpecialTaskCompletion {
+  id: string; // `${specialTaskId}_${employeeId}_${dateKey}`
+  specialTaskId: string;
+  specialTaskTitle: string;
+  employeeId: string;
+  employeeName: string;
+  employeePhone?: string;
+  employeeDepartment: Department;
+  dateKey: string; // 'YYYY-MM-DD'
+  status: 'completed' | 'pending' | 'missed';
+  completedAt?: string;
+  notes?: string;
+  checkedItemIds?: string[];
+  submittedAt?: string;
+}
+
 export interface AppNotification {
   id: string;
   title: string;

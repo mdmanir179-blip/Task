@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Trash2,
   AlertTriangle,
+  Sparkles,
 } from 'lucide-react';
 import { Task, Department, TaskStatus, User as UserModel, DEPARTMENT_CONFIG, getDepartmentConfig } from '../types';
 
@@ -23,6 +24,7 @@ interface TaskBoardProps {
   onOpenEvaluation: (task: Task) => void;
   onOpenEdit: (task: Task) => void;
   onDeleteTask?: (taskId: string) => void;
+  onOpenSpecialTasks?: () => void;
 }
 
 export const TaskBoard: React.FC<TaskBoardProps> = ({
@@ -33,6 +35,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
   onOpenEvaluation,
   onOpenEdit,
   onDeleteTask,
+  onOpenSpecialTasks,
 }) => {
   const [selectedDept, setSelectedDept] = useState<Department | 'all'>('all');
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus | 'all'>('all');
@@ -132,6 +135,18 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>{isAdmin ? 'Assign New Task' : 'Assign to Colleague'}</span>
           </button>
+
+          {/* Quick Access to Routine Special Tasks */}
+          {onOpenSpecialTasks && (
+            <button
+              onClick={onOpenSpecialTasks}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 active:scale-95 transition cursor-pointer"
+              title="Daily 6:30 AM – 12:00 AM Routine Special Tasks"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Routine Tasks (6:30 AM)</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -6,6 +6,8 @@ import {
   ImportantForm,
   Department,
   UserRole,
+  SpecialTask,
+  SpecialTaskCompletion,
 } from './types';
 import {
   getUsers,
@@ -18,6 +20,11 @@ import {
   saveCompanyPersons,
   getImportantForms,
   saveImportantForms,
+  getSpecialTasks,
+  saveSpecialTasks,
+  getSpecialTaskCompletions,
+  saveSpecialTaskCompletions,
+  addNotification,
   subscribeToSync,
   broadcastUpdate,
 } from './utils/storage';
@@ -35,6 +42,11 @@ import {
   subscribeImportantForms,
   saveImportantFormCloud,
   deleteImportantFormCloud,
+  subscribeSpecialTasks,
+  saveSpecialTaskCloud,
+  deleteSpecialTaskCloud,
+  subscribeSpecialTaskCompletions,
+  saveSpecialTaskCompletionCloud,
   forceSyncAllToCloud,
 } from './utils/firebase';
 import {
@@ -48,6 +60,7 @@ import { Navbar } from './components/Navbar';
 import { AuthView } from './components/AuthView';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { TaskBoard } from './components/TaskBoard';
+import { SpecialTasksView } from './components/SpecialTasksView';
 import { TaskDetailModal } from './components/TaskDetailModal';
 import { TaskFormModal } from './components/TaskFormModal';
 import { TaskEvaluationModal } from './components/TaskEvaluationModal';
@@ -90,9 +103,11 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>(getTasks);
   const [companyPersons, setCompanyPersons] = useState<CompanyPerson[]>(getCompanyPersons);
   const [importantForms, setImportantForms] = useState<ImportantForm[]>(getImportantForms);
+  const [specialTasks, setSpecialTasks] = useState<SpecialTask[]>(getSpecialTasks);
+  const [specialTaskCompletions, setSpecialTaskCompletions] = useState<SpecialTaskCompletion[]>(getSpecialTaskCompletions);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'tasks' | 'directory' | 'forms' | 'analytics' | 'users'>('tasks');
+  const [activeTab, setActiveTab] = useState<'tasks' | 'special_tasks' | 'directory' | 'forms' | 'analytics' | 'users'>('tasks');
 
   // Multi-Language State (English default, Bangla, Hindi)
   const [currentLang, setCurrentLang] = useState<Language>(getSavedLanguage);
@@ -232,12 +247,30 @@ export default function App() {
       }
     });
 
-    // 5. Local Broadcast Channel sync
+    // 5. Subscribe to Special Tasks
+    const unsubSpecialTasks = subscribeSpecialTasks((cloudSpecialTasks) => {
+      if (cloudSpecialTasks) {
+        setSpecialTasks(cloudSpecialTasks);
+        saveSpecialTasks(cloudSpecialTasks);
+      }
+    });
+
+    // 6. Subscribe to Special Task Completions
+    const unsubCompletions = subscribeSpecialTaskCompletions((cloudCompletions) => {
+      if (cloudCompletions) {
+        setSpecialTaskCompletions(cloudCompletions);
+        saveSpecialTaskCompletions(cloudCompletions);
+      }
+    });
+
+    // 7. Local Broadcast Channel sync
     const unsubLocal = subscribeToSync(() => {
       setUsers(getUsers());
       setTasks(getTasks());
       setCompanyPersons(getCompanyPersons());
       setImportantForms(getImportantForms());
+      setSpecialTasks(getSpecialTasks());
+      setSpecialTaskCompletions(getSpecialTaskCompletions());
     });
 
     return () => {
@@ -245,6 +278,8 @@ export default function App() {
       unsubUsers();
       unsubPersons();
       unsubForms();
+      unsubSpecialTasks();
+      unsubCompletions();
       unsubLocal();
     };
   }, [showToast]);
@@ -775,6 +810,56 @@ export default function App() {
     showToast(`Employee "${target?.name || userId}" deleted permanently`, 'info');
   };
 
+  // Special Tasks Handlers (06:30 AM - 12:00 AM)
+  const handleSaveSpecialTask = async (task: SpecialTask) => {
+    const updated = [...specialTasks];
+    const idx = updated.findIndex((t) => t.id === task.id);
+    if (idx >= 0) {
+      updated[idx] = task;
+    } else {
+      updated.unshift(task);
+    }
+    setSpecialTasks(updated);
+    saveSpecialTasks(updated);
+    await saveSpecialTaskCloud(task);
+
+    // Auto-broadcast in-app task notification to all employees
+    addNotification({
+      title: '⭐ Routine Special Task Updated',
+      message: `Master Admin published "${task.title}". Automatically delivered to all eligible employees (06:30 AM – 12:00 AM).`,
+      type: 'info',
+    });
+  };
+
+  const handleDeleteSpecialTask = async (taskId: string) => {
+    const target = specialTasks.find((t) => t.id === taskId);
+    const updated = specialTasks.filter((t) => t.id !== taskId);
+    setSpecialTasks(updated);
+    saveSpecialTasks(updated);
+    await deleteSpecialTaskCloud(taskId);
+
+    if (target) {
+      addNotification({
+        title: 'Special Task Removed',
+        message: `Task "${target.title}" was removed by Master Admin.`,
+        type: 'info',
+      });
+    }
+  };
+
+  const handleSubmitSpecialTaskCompletion = async (comp: SpecialTaskCompletion) => {
+    const updated = [...specialTaskCompletions];
+    const idx = updated.findIndex((c) => c.id === comp.id);
+    if (idx >= 0) {
+      updated[idx] = comp;
+    } else {
+      updated.unshift(comp);
+    }
+    setSpecialTaskCompletions(updated);
+    saveSpecialTaskCompletions(updated);
+    await saveSpecialTaskCompletionCloud(comp);
+  };
+
   const taskCounts = {
     pending: tasks.filter((t) => t.status === 'pending').length,
     submitted: tasks.filter((t) => t.status === 'submitted').length,
@@ -869,6 +954,20 @@ export default function App() {
               setIsTaskFormOpen(true);
             }}
             onDeleteTask={handleDeleteTask}
+            onOpenSpecialTasks={() => setActiveTab('special_tasks')}
+          />
+        )}
+
+        {activeTab === 'special_tasks' && (
+          <SpecialTasksView
+            currentUser={currentUser}
+            users={users}
+            specialTasks={specialTasks}
+            completions={specialTaskCompletions}
+            onSaveSpecialTask={handleSaveSpecialTask}
+            onDeleteSpecialTask={handleDeleteSpecialTask}
+            onSubmitCompletion={handleSubmitSpecialTaskCompletion}
+            onShowToast={showToast}
           />
         )}
 

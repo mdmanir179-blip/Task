@@ -10,8 +10,8 @@ import {
   getDocFromServer,
   Unsubscribe,
 } from 'firebase/firestore';
-import { User, Task, CompanyPerson, ImportantForm } from '../types';
-import { INITIAL_USERS, getTasks, saveTasks, getUsers, saveUsers, getCompanyPersons, saveCompanyPersons, getImportantForms, saveImportantForms } from './storage';
+import { User, Task, CompanyPerson, ImportantForm, SpecialTask, SpecialTaskCompletion } from '../types';
+import { INITIAL_USERS, getTasks, saveTasks, getUsers, saveUsers, getCompanyPersons, saveCompanyPersons, getImportantForms, saveImportantForms, getSpecialTasks, saveSpecialTasks, getSpecialTaskCompletions, saveSpecialTaskCompletions } from './storage';
 
 // Embedded production Firebase configuration with environment variable fallbacks for Vercel
 export const firebaseConfig = {
@@ -38,6 +38,8 @@ const USERS_COLLECTION = 'users';
 const TASKS_COLLECTION = 'tasks';
 const PERSONS_COLLECTION = 'companyPersons';
 const FORMS_COLLECTION = 'importantForms';
+const SPECIAL_TASKS_COLLECTION = 'specialTasks';
+const SPECIAL_TASK_COMPLETIONS_COLLECTION = 'specialTaskCompletions';
 
 // Test connection on boot
 export async function testConnection(): Promise<boolean> {
@@ -258,6 +260,99 @@ export async function deleteImportantFormCloud(formId: string): Promise<void> {
     saveImportantForms(currentLocal);
   } catch (e) {
     console.error('Failed to delete form from cloud:', e);
+  }
+}
+
+// ------------------- SPECIAL ROUTINE TASKS (6:30 AM - 12:00 AM) -------------------
+export function subscribeSpecialTasks(
+  onUpdate: (tasks: SpecialTask[]) => void
+): Unsubscribe {
+  const colRef = collection(db, SPECIAL_TASKS_COLLECTION);
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const cloudTasks: SpecialTask[] = [];
+      snapshot.forEach((docSnap) => {
+        cloudTasks.push(docSnap.data() as SpecialTask);
+      });
+
+      cloudTasks.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      if (cloudTasks.length > 0) {
+        saveSpecialTasks(cloudTasks);
+        onUpdate(cloudTasks);
+      } else {
+        // Fallback to local default starter tasks if cloud collection is fresh
+        onUpdate(getSpecialTasks());
+      }
+    },
+    (err) => {
+      console.error('Error listening to special tasks collection:', err);
+      onUpdate(getSpecialTasks());
+    }
+  );
+}
+
+export async function saveSpecialTaskCloud(task: SpecialTask): Promise<void> {
+  try {
+    const clean = JSON.parse(JSON.stringify(task));
+    await setDoc(doc(db, SPECIAL_TASKS_COLLECTION, task.id), clean, { merge: true });
+    const local = getSpecialTasks();
+    const idx = local.findIndex((t) => t.id === task.id);
+    if (idx >= 0) local[idx] = task;
+    else local.unshift(task);
+    saveSpecialTasks(local);
+  } catch (e) {
+    console.error('Failed to save special task to cloud:', e);
+  }
+}
+
+export async function deleteSpecialTaskCloud(taskId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, SPECIAL_TASKS_COLLECTION, taskId));
+    const currentLocal = getSpecialTasks().filter((t) => t.id !== taskId);
+    saveSpecialTasks(currentLocal);
+  } catch (e) {
+    console.error('Failed to delete special task from cloud:', e);
+  }
+}
+
+// ------------------- SPECIAL TASK COMPLETIONS / DAILY LOGS -------------------
+export function subscribeSpecialTaskCompletions(
+  onUpdate: (completions: SpecialTaskCompletion[]) => void
+): Unsubscribe {
+  const colRef = collection(db, SPECIAL_TASK_COMPLETIONS_COLLECTION);
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const list: SpecialTaskCompletion[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push(docSnap.data() as SpecialTaskCompletion);
+      });
+      saveSpecialTaskCompletions(list);
+      onUpdate(list);
+    },
+    (err) => {
+      console.error('Error listening to special task completions:', err);
+      onUpdate(getSpecialTaskCompletions());
+    }
+  );
+}
+
+export async function saveSpecialTaskCompletionCloud(
+  completion: SpecialTaskCompletion
+): Promise<void> {
+  try {
+    const clean = JSON.parse(JSON.stringify(completion));
+    await setDoc(doc(db, SPECIAL_TASK_COMPLETIONS_COLLECTION, completion.id), clean, { merge: true });
+    const local = getSpecialTaskCompletions();
+    const idx = local.findIndex((c) => c.id === completion.id);
+    if (idx >= 0) local[idx] = completion;
+    else local.unshift(completion);
+    saveSpecialTaskCompletions(local);
+  } catch (e) {
+    console.error('Failed to save special task completion to cloud:', e);
   }
 }
 

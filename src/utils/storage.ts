@@ -1,4 +1,4 @@
-import { User, Task, CompanyPerson, ImportantForm, AppNotification } from '../types';
+import { User, Task, CompanyPerson, ImportantForm, AppNotification, SpecialTask, SpecialTaskCompletion } from '../types';
 
 // Storage keys version 2 (Clean production state without demo data)
 const USERS_KEY = 'tbc_users_v2';
@@ -7,6 +7,8 @@ const TASKS_KEY = 'tbc_tasks_v2';
 const COMPANY_PERSONS_KEY = 'tbc_company_persons_v2';
 const FORMS_KEY = 'tbc_important_forms_v2';
 const NOTIFICATIONS_KEY = 'tbc_notifications_v2';
+const SPECIAL_TASKS_KEY = 'tbc_special_tasks_v2';
+const SPECIAL_TASK_COMPLETIONS_KEY = 'tbc_special_task_completions_v2';
 const SYNC_CHANNEL_NAME = 'tbc_realtime_sync_channel';
 
 // Clean legacy demo data from v1 keys if present
@@ -226,4 +228,84 @@ export function addNotification(notification: Omit<AppNotification, 'id' | 'time
   const updated = [newItem, ...list].slice(0, 50);
   localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updated));
   broadcastUpdate('NOTIFICATION_ADDED', newItem);
+}
+
+// Default Starter Special Tasks
+export const INITIAL_SPECIAL_TASKS: SpecialTask[] = [
+  {
+    id: 'sp_task_morning_check',
+    title: 'Daily Morning Operational Inspection & Setup',
+    description: 'Ensure equipment, workspace, and material preparation is verified before daily production begins.',
+    department: 'all',
+    targetRole: 'all',
+    isActive: true,
+    mandatory: true,
+    startTime: '06:30',
+    endTime: '00:00',
+    createdById: 'user_master',
+    createdByName: 'Master Admin',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    checklist: [
+      { id: 'chk_1', text: 'Clean and inspect assigned workstation/machines' },
+      { id: 'chk_2', text: 'Confirm daily material inventory & supplies availability' },
+      { id: 'chk_3', text: 'Report any safety hazard or equipment discrepancy' },
+    ],
+  },
+  {
+    id: 'sp_task_evening_handover',
+    title: 'Daily Production & Handover Log Submission',
+    description: 'Log finished work, machinery status, and secure the department before leaving.',
+    department: 'all',
+    targetRole: 'all',
+    isActive: true,
+    mandatory: true,
+    startTime: '06:30',
+    endTime: '00:00',
+    createdById: 'user_master',
+    createdByName: 'Master Admin',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    checklist: [
+      { id: 'chk_h1', text: 'Count output units produced / tasks completed' },
+      { id: 'chk_h2', text: 'Turn off machines, power switches, and lights safely' },
+      { id: 'chk_h3', text: 'Complete daily log notes and submit report' },
+    ],
+  },
+];
+
+export function getSpecialTasks(): SpecialTask[] {
+  if (typeof window === 'undefined') return INITIAL_SPECIAL_TASKS;
+  try {
+    const raw = localStorage.getItem(SPECIAL_TASKS_KEY);
+    if (!raw) {
+      localStorage.setItem(SPECIAL_TASKS_KEY, JSON.stringify(INITIAL_SPECIAL_TASKS));
+      return INITIAL_SPECIAL_TASKS;
+    }
+    return JSON.parse(raw);
+  } catch (e) {
+    return INITIAL_SPECIAL_TASKS;
+  }
+}
+
+export function saveSpecialTasks(tasks: SpecialTask[]) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(SPECIAL_TASKS_KEY, JSON.stringify(tasks));
+  broadcastUpdate('SPECIAL_TASKS_UPDATED', tasks);
+}
+
+export function getSpecialTaskCompletions(): SpecialTaskCompletion[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(SPECIAL_TASK_COMPLETIONS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveSpecialTaskCompletions(completions: SpecialTaskCompletion[]) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(SPECIAL_TASK_COMPLETIONS_KEY, JSON.stringify(completions));
+  broadcastUpdate('SPECIAL_TASK_COMPLETIONS_UPDATED', completions);
 }
