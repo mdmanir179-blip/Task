@@ -20,5 +20,15 @@ service cloud.firestore {
     match /importantForms/{formId} {
       allow read, write: if true;
     }
+
+    // Master Admin Special Routine Tasks (06:30 AM - 12:00 AM)
+    match /specialTasks/{specialTaskId} {
+      allow read, write: if true;
+    }
+
+    // Daily Special Task Completions by Staff
+    match /specialTaskCompletions/{completionId} {
+      allow read, write: if true;
+    }
   }
 }

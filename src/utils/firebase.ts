@@ -264,6 +264,29 @@ export async function deleteImportantFormCloud(formId: string): Promise<void> {
 }
 
 // ------------------- SPECIAL ROUTINE TASKS (6:30 AM - 12:00 AM) -------------------
+const DELETED_SPECIAL_TASKS_KEY = 'tbc_deleted_special_tasks_v1';
+
+export function getDeletedSpecialTaskIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(DELETED_SPECIAL_TASKS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function addDeletedSpecialTaskId(id: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    const ids = getDeletedSpecialTaskIds();
+    if (!ids.includes(id)) {
+      ids.push(id);
+      localStorage.setItem(DELETED_SPECIAL_TASKS_KEY, JSON.stringify(ids.slice(-500)));
+    }
+  } catch (e) {}
+}
+
 export function subscribeSpecialTasks(
   onUpdate: (tasks: SpecialTask[]) => void
 ): Unsubscribe {
@@ -271,25 +294,33 @@ export function subscribeSpecialTasks(
   return onSnapshot(
     colRef,
     (snapshot) => {
+      const deletedIds = getDeletedSpecialTaskIds();
       const cloudTasks: SpecialTask[] = [];
       snapshot.forEach((docSnap) => {
-        cloudTasks.push(docSnap.data() as SpecialTask);
+        const t = docSnap.data() as SpecialTask;
+        if (!deletedIds.includes(t.id)) {
+          cloudTasks.push(t);
+        }
       });
 
       cloudTasks.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
-      if (cloudTasks.length > 0) {
+
+      if (!snapshot.empty || cloudTasks.length > 0) {
         saveSpecialTasks(cloudTasks);
         onUpdate(cloudTasks);
       } else {
-        // Fallback to local default starter tasks if cloud collection is fresh
-        onUpdate(getSpecialTasks());
+        const local = getSpecialTasks().filter((t) => !deletedIds.includes(t.id));
+        saveSpecialTasks(local);
+        onUpdate(local);
       }
     },
     (err) => {
       console.error('Error listening to special tasks collection:', err);
-      onUpdate(getSpecialTasks());
+      const deletedIds = getDeletedSpecialTaskIds();
+      const local = getSpecialTasks().filter((t) => !deletedIds.includes(t.id));
+      onUpdate(local);
     }
   );
 }
@@ -309,13 +340,14 @@ export async function saveSpecialTaskCloud(task: SpecialTask): Promise<void> {
 }
 
 export async function deleteSpecialTaskCloud(taskId: string): Promise<void> {
+  addDeletedSpecialTaskId(taskId);
   try {
     await deleteDoc(doc(db, SPECIAL_TASKS_COLLECTION, taskId));
-    const currentLocal = getSpecialTasks().filter((t) => t.id !== taskId);
-    saveSpecialTasks(currentLocal);
   } catch (e) {
     console.error('Failed to delete special task from cloud:', e);
   }
+  const currentLocal = getSpecialTasks().filter((t) => t.id !== taskId);
+  saveSpecialTasks(currentLocal);
 }
 
 // ------------------- SPECIAL TASK COMPLETIONS / DAILY LOGS -------------------

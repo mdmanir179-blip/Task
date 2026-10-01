@@ -180,6 +180,8 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
   const [adminDeptFilter, setAdminDeptFilter] = useState<Department | 'all'>('all');
   const [adminStatusFilter, setAdminStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [previewChecklistTask, setPreviewChecklistTask] = useState<SpecialTask | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<SpecialTask | null>(null);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
 
   // Filtered Special Tasks for Admin Management Table
   const filteredAdminSpecialTasks = useMemo(() => {
@@ -322,10 +324,18 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
     setIsEditModalOpen(false);
   };
 
-  const handleDeleteTask = async (taskId: string, title: string) => {
-    if (!confirm(`Are you sure you want to permanently delete special task "${title}"?`)) return;
-    await onDeleteSpecialTask(taskId);
-    onShowToast(`Special task "${title}" deleted`, 'info');
+  const handleConfirmDelete = async () => {
+    if (!taskToDelete) return;
+    setIsDeletingTask(true);
+    try {
+      await onDeleteSpecialTask(taskToDelete.id);
+      onShowToast(`Special task "${taskToDelete.title}" deleted permanently`, 'info');
+      setTaskToDelete(null);
+    } catch (err) {
+      onShowToast('Failed to delete special task. Please try again.', 'alert');
+    } finally {
+      setIsDeletingTask(false);
+    }
   };
 
   const handleToggleTaskActive = async (task: SpecialTask) => {
@@ -918,9 +928,9 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
                               </button>
 
                               <button
-                                onClick={() => handleDeleteTask(task.id, task.title)}
+                                onClick={() => setTaskToDelete(task)}
                                 className="p-1.5 sm:px-2.5 sm:py-1 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/80 text-rose-600 dark:text-rose-400 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                                title="Delete Task"
+                                title="Delete Special Task"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                                 <span className="hidden sm:inline">Delete</span>
@@ -1382,6 +1392,50 @@ export const SpecialTasksView: React.FC<SpecialTasksViewProps> = ({
                 className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: In-App Delete Special Task Confirmation Modal */}
+      {taskToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 text-center animate-scale-up">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-3">
+              <Trash2 className="w-6 h-6 stroke-[2.2]" />
+            </div>
+
+            <h3 className="text-base font-black text-slate-900 dark:text-white">
+              Delete Special Task?
+            </h3>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-2">
+              Are you sure you want to permanently delete{' '}
+              <strong className="text-slate-900 dark:text-white">"{taskToDelete.title}"</strong>?
+            </p>
+
+            <p className="text-[11px] text-slate-400 mt-1">
+              This task will be immediately removed from all employees' routine boards and database.
+            </p>
+
+            <div className="mt-5 flex items-center justify-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setTaskToDelete(null)}
+                disabled={isDeletingTask}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeletingTask}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-600/20 active:scale-95 transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingTask ? 'Deleting...' : 'Delete Permanently'}</span>
               </button>
             </div>
           </div>

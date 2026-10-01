@@ -83,6 +83,46 @@
         "submissionsCount": { "type": "number" }
       },
       "required": ["id", "title", "url", "category"]
+    },
+    "SpecialTask": {
+      "title": "SpecialTask",
+      "description": "Master admin daily routine special task (06:30 AM to 12:00 AM)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "department": { "type": "string" },
+        "mandatory": { "type": "boolean" },
+        "isActive": { "type": "boolean" },
+        "createdById": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "checklist": { "type": "array" }
+      },
+      "required": ["id", "title", "department", "isActive", "createdAt"]
+    },
+    "SpecialTaskCompletion": {
+      "title": "SpecialTaskCompletion",
+      "description": "Daily employee completion record for special tasks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "specialTaskId": { "type": "string" },
+        "specialTaskTitle": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "employeeName": { "type": "string" },
+        "department": { "type": "string" },
+        "dateKey": { "type": "string" },
+        "checkedItemIds": { "type": "array" },
+        "notes": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "specialTaskId", "employeeId", "dateKey", "status"]
     }
   },
   "firestore": {
@@ -101,6 +141,14 @@
     "importantForms": {
       "entity": "ImportantForm",
       "path": "/importantForms/{formId}"
+    },
+    "specialTasks": {
+      "entity": "SpecialTask",
+      "path": "/specialTasks/{specialTaskId}"
+    },
+    "specialTaskCompletions": {
+      "entity": "SpecialTaskCompletion",
+      "path": "/specialTaskCompletions/{completionId}"
     }
   }
 }
