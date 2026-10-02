@@ -56,6 +56,13 @@ import {
   sendBrowserNotification,
   requestNotificationPermission,
 } from './utils/sound';
+import {
+  subscribeDepartments,
+  getStoredDepartments,
+  saveDepartmentCloud,
+  deleteDepartmentCloud,
+} from './utils/departments';
+import { DepartmentInfo } from './types';
 import { Navbar } from './components/Navbar';
 import { AuthView } from './components/AuthView';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -128,11 +135,15 @@ export default function App() {
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'info' | 'success' | 'alert' } | null>(null);
 
+  // Departments State (Cloud + Local synchronized)
+  const [departments, setDepartments] = useState<DepartmentInfo[]>(() => getStoredDepartments());
+
   // Notification & Sound State
   const [latestNotification, setLatestNotification] = useState<TaskNotification | null>(null);
   const [notificationsList, setNotificationsList] = useState<TaskNotification[]>([]);
   const [isSoundOn, setIsSoundOn] = useState<boolean>(() => isSoundEnabled());
   const knownTaskIdsRef = useRef<Set<string>>(new Set());
+  const prevTaskStatusMapRef = useRef<Map<string, Task['status']>>(new Map());
   const isInitialTaskLoadRef = useRef<boolean>(true);
 
   const handleToggleSound = () => {
@@ -140,7 +151,7 @@ export default function App() {
     setIsSoundOn(next);
     setSoundEnabled(next);
     if (next) {
-      playNotificationSound();
+      playNotificationSound(true);
       showToast('Notification music active 🎵', 'info');
     } else {
       showToast('Notification music muted 🔇', 'info');
@@ -148,7 +159,7 @@ export default function App() {
   };
 
   const handleTestSound = () => {
-    playNotificationSound();
+    playNotificationSound(true);
     showToast('Playing notification music chime 🔔', 'info');
     requestNotificationPermission().catch(() => {});
   };
@@ -174,6 +185,7 @@ export default function App() {
       if (isInitialTaskLoadRef.current) {
         // First snapshot load - populate known IDs without audio alert
         knownTaskIdsRef.current = new Set(cloudTasks.map((t) => t.id));
+        cloudTasks.forEach((t) => prevTaskStatusMapRef.current.set(t.id, t.status));
         isInitialTaskLoadRef.current = false;
         setTasks(cloudTasks);
         saveTasks(cloudTasks);
@@ -183,7 +195,10 @@ export default function App() {
       // Detect newly added tasks from any connected device/admin
       const newTasks = cloudTasks.filter((t) => !knownTaskIdsRef.current.has(t.id));
       if (newTasks.length > 0) {
-        newTasks.forEach((t) => knownTaskIdsRef.current.add(t.id));
+        newTasks.forEach((t) => {
+          knownTaskIdsRef.current.add(t.id);
+          prevTaskStatusMapRef.current.set(t.id, t.status);
+        });
         const freshTask = newTasks[0];
 
         // Play melodious notification sound ("music")
@@ -204,6 +219,21 @@ export default function App() {
           `🔔 New Task: ${freshTask.title}`,
           `Assigned to ${freshTask.assignedToName} by ${freshTask.assignedByName}`
         );
+      } else {
+        // Check for task status transitions (e.g. employee submitted task or admin approved)
+        for (const task of cloudTasks) {
+          const prevStatus = prevTaskStatusMapRef.current.get(task.id);
+          if (prevStatus && prevStatus !== task.status) {
+            if (task.status === 'submitted') {
+              playNotificationSound();
+              showToast(`Task "${task.title}" submitted by ${task.assignedToName}`, 'info');
+            } else if (task.status === 'approved') {
+              playNotificationSound();
+              showToast(`Task "${task.title}" approved! 🎉`, 'success');
+            }
+          }
+          prevTaskStatusMapRef.current.set(task.id, task.status);
+        }
       }
 
       setTasks(cloudTasks);
@@ -263,7 +293,14 @@ export default function App() {
       }
     });
 
-    // 7. Local Broadcast Channel sync
+    // 7. Subscribe to Department Divisions
+    const unsubDepts = subscribeDepartments((cloudDepts) => {
+      if (cloudDepts && cloudDepts.length > 0) {
+        setDepartments(cloudDepts);
+      }
+    });
+
+    // 8. Local Broadcast Channel sync
     const unsubLocal = subscribeToSync(() => {
       setUsers(getUsers());
       setTasks(getTasks());
@@ -271,6 +308,7 @@ export default function App() {
       setImportantForms(getImportantForms());
       setSpecialTasks(getSpecialTasks());
       setSpecialTaskCompletions(getSpecialTaskCompletions());
+      setDepartments(getStoredDepartments());
     });
 
     return () => {
@@ -280,9 +318,28 @@ export default function App() {
       unsubForms();
       unsubSpecialTasks();
       unsubCompletions();
+      unsubDepts();
       unsubLocal();
     };
   }, [showToast]);
+
+  const handleAddDepartment = (dept: DepartmentInfo) => {
+    setDepartments((prev) => {
+      const idx = prev.findIndex((d) => d.id === dept.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = dept;
+        return next;
+      }
+      return [...prev, dept];
+    });
+    showToast(`Department Division "${dept.label}" created successfully`, 'success');
+  };
+
+  const handleDeleteDepartment = (deptId: string) => {
+    setDepartments((prev) => prev.filter((d) => d.id !== deptId));
+    showToast('Department division deleted successfully', 'info');
+  };
 
   const handleLogout = () => {
     setCurrentUser(null);
@@ -489,6 +546,10 @@ export default function App() {
     saveTasks(updated);
     if (updatedTaskObj) {
       saveTaskCloud(updatedTaskObj).catch(console.error);
+    }
+
+    if (newStatus === 'submitted' || newStatus === 'approved') {
+      playNotificationSound();
     }
 
     // Keep selected task updated
@@ -857,6 +918,7 @@ export default function App() {
     }
     setSpecialTaskCompletions(updated);
     saveSpecialTaskCompletions(updated);
+    playNotificationSound();
     await saveSpecialTaskCompletionCloud(comp);
   };
 
@@ -1004,6 +1066,9 @@ export default function App() {
           <UserManagement
             users={users}
             currentUser={currentUser}
+            departments={departments}
+            onAddDepartment={handleAddDepartment}
+            onDeleteDepartment={handleDeleteDepartment}
             onToggleUserStatus={handleToggleUserStatus}
             onUpdateUserRole={handleUpdateUserRole}
             onUpdateUser={handleUpdateUser}
@@ -1038,6 +1103,7 @@ export default function App() {
         users={users}
         currentUser={currentUser}
         defaultSelfTask={isSelfTaskMode}
+        departments={departments}
       />
 
       <TaskDetailModal

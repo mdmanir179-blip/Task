@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, CheckSquare, UserPlus } from 'lucide-react';
-import { Task, Department, TaskPriority, User as UserModel, DEPARTMENT_CONFIG } from '../types';
+import { X, Plus, Trash2, CheckSquare, UserPlus, Building2 } from 'lucide-react';
+import { Task, Department, TaskPriority, User as UserModel, getDepartmentConfig, DepartmentInfo } from '../types';
+import { getStoredDepartments, saveDepartmentCloud, generateDepartmentMetadata, DEPARTMENT_PALETTES } from '../utils/departments';
 
 interface TaskFormModalProps {
   isOpen: boolean;
@@ -10,6 +11,8 @@ interface TaskFormModalProps {
   users: UserModel[];
   currentUser: UserModel;
   defaultSelfTask?: boolean;
+  departments?: DepartmentInfo[];
+  onAddDepartment?: (dept: DepartmentInfo) => void;
 }
 
 export const TaskFormModal: React.FC<TaskFormModalProps> = ({
@@ -20,6 +23,8 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
   users,
   currentUser,
   defaultSelfTask = false,
+  departments,
+  onAddDepartment,
 }) => {
   if (!isOpen) return null;
 
@@ -60,6 +65,48 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
     ]
   );
   const [newChecklistText, setNewChecklistText] = useState('');
+
+  // Department Division handling
+  const [localDeptList, setLocalDeptList] = useState<DepartmentInfo[]>(() => departments || getStoredDepartments());
+  const [isAddingDept, setIsAddingDept] = useState(false);
+  const [newDeptName, setNewDeptName] = useState('');
+  const [newDeptCode, setNewDeptCode] = useState('');
+  const [isSubmittingDept, setIsSubmittingDept] = useState(false);
+
+  useEffect(() => {
+    if (departments && departments.length > 0) {
+      setLocalDeptList(departments);
+    }
+  }, [departments]);
+
+  const handleCreateNewDepartment = async () => {
+    if (!newDeptName.trim()) return;
+    setIsSubmittingDept(true);
+    try {
+      const deptObj = generateDepartmentMetadata(newDeptName, newDeptCode);
+      await saveDepartmentCloud(deptObj);
+      setLocalDeptList((prev) => {
+        const idx = prev.findIndex((d) => d.id === deptObj.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = deptObj;
+          return next;
+        }
+        return [...prev, deptObj];
+      });
+      if (onAddDepartment) {
+        onAddDepartment(deptObj);
+      }
+      setDepartment(deptObj.id);
+      setIsAddingDept(false);
+      setNewDeptName('');
+      setNewDeptCode('');
+    } catch (e) {
+      console.error('Failed to create department:', e);
+    } finally {
+      setIsSubmittingDept(false);
+    }
+  };
 
   // Active users list
   const activeUsers = users.filter((u) => u.isActive);
@@ -213,23 +260,92 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
           {/* Department and Assignee */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Department Division *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Department Division *
+                </label>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingDept(!isAddingDept)}
+                    className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ Add Department</span>
+                  </button>
+                )}
+              </div>
               <select
                 value={department}
                 onChange={(e) => {
                   const newDept = e.target.value as Department;
                   setDepartment(newDept);
                 }}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none cursor-pointer"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none cursor-pointer font-bold"
               >
-                <option value="admin">Admin Department</option>
-                <option value="backoffice">Backoffice Department</option>
-                <option value="printing">Printing Department</option>
-                <option value="warehouse">Warehouse Staff Department</option>
-                <option value="housekeeping">Housekeeping Department</option>
+                {localDeptList.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.label} Department {d.code ? `(${d.code})` : ''}
+                  </option>
+                ))}
               </select>
+
+              {/* Inline Add Department Division Form */}
+              {isAddingDept && (
+                <div className="mt-2.5 p-3 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 space-y-2 animate-scale-up">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black text-amber-900 dark:text-amber-200 flex items-center gap-1.5 uppercase tracking-wide">
+                      <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Add Department Division</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingDept(false)}
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <input
+                        type="text"
+                        placeholder="Division name (e.g. Marketing)"
+                        value={newDeptName}
+                        onChange={(e) => setNewDeptName(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none font-medium"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder="Code (e.g. MKT)"
+                        value={newDeptCode}
+                        onChange={(e) => setNewDeptCode(e.target.value.toUpperCase())}
+                        maxLength={5}
+                        className="w-full px-2.5 py-1.5 text-xs rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none font-bold uppercase"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingDept(false)}
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-black/5 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmittingDept || !newDeptName.trim()}
+                      onClick={handleCreateNewDepartment}
+                      className="px-3.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs shadow-xs transition cursor-pointer"
+                    >
+                      {isSubmittingDept ? 'Saving...' : 'Save & Select'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -251,7 +367,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none cursor-pointer"
                 >
                   {/* Categorized options */}
-                  <optgroup label={`Staff in ${DEPARTMENT_CONFIG[department]?.label || department}`}>
+                  <optgroup label={`Staff in ${getDepartmentConfig(department).label}`}>
                     {activeUsers
                       .filter((u) => u.department === department)
                       .map((u) => (
@@ -266,7 +382,7 @@ export const TaskFormModal: React.FC<TaskFormModalProps> = ({
                       .filter((u) => u.department !== department)
                       .map((u) => (
                         <option key={u.id} value={u.id}>
-                          {u.name} ({u.employeeId || u.phone}) — {DEPARTMENT_CONFIG[u.department]?.label || u.department} {u.id === currentUser.id ? '(You)' : ''}
+                          {u.name} ({u.employeeId || u.phone}) — {getDepartmentConfig(u.department).label} {u.id === currentUser.id ? '(You)' : ''}
                         </option>
                       ))}
                   </optgroup>

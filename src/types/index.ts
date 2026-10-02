@@ -1,4 +1,22 @@
-export type Department = 'backoffice' | 'printing' | 'warehouse' | 'admin' | 'housekeeping';
+export type Department =
+  | 'backoffice'
+  | 'printing'
+  | 'warehouse'
+  | 'admin'
+  | 'housekeeping'
+  | (string & {});
+
+export interface DepartmentInfo {
+  id: string;
+  label: string;
+  code: string;
+  color: string;
+  bgLight: string;
+  bgDark: string;
+  border: string;
+  isCustom?: boolean;
+  createdAt?: string;
+}
 
 export type UserRole = 'master_admin' | 'admin' | 'employee';
 
@@ -185,10 +203,38 @@ export const DEPARTMENT_CONFIG: Record<
   },
 };
 
-export function getDepartmentConfig(dept?: string | null) {
-  if (!dept) return DEPARTMENT_CONFIG.backoffice;
-  const key = dept.toLowerCase() as Department;
-  return DEPARTMENT_CONFIG[key] || DEPARTMENT_CONFIG.backoffice;
+export function getDepartmentConfig(dept?: string | null): DepartmentInfo {
+  if (!dept) {
+    return { id: 'backoffice', ...DEPARTMENT_CONFIG.backoffice };
+  }
+  const key = dept.toLowerCase();
+  if (DEPARTMENT_CONFIG[key as keyof typeof DEPARTMENT_CONFIG]) {
+    return { id: key, ...DEPARTMENT_CONFIG[key as keyof typeof DEPARTMENT_CONFIG] };
+  }
+
+  // Look in dynamic stored departments
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('tbc_departments_v2');
+      if (stored) {
+        const list: DepartmentInfo[] = JSON.parse(stored);
+        const match = list.find((d) => d.id === key || d.label.toLowerCase() === key);
+        if (match) return match;
+      }
+    } catch {}
+  }
+
+  // Fallback for custom or arbitrary department string
+  const label = dept.charAt(0).toUpperCase() + dept.slice(1);
+  return {
+    id: key,
+    label,
+    code: dept.substring(0, 3).toUpperCase(),
+    color: 'text-indigo-600 dark:text-indigo-400',
+    bgLight: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    bgDark: 'dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800',
+    border: 'border-indigo-300 dark:border-indigo-700',
+  };
 }
 
 export const PRIORITY_CONFIG: Record<

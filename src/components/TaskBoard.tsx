@@ -15,6 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Task, Department, TaskStatus, User as UserModel, DEPARTMENT_CONFIG, getDepartmentConfig } from '../types';
+import { getStoredDepartments } from '../utils/departments';
 
 interface TaskBoardProps {
   tasks: Task[];
@@ -45,6 +46,7 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
 
   const isMaster = currentUser.role === 'master_admin';
   const isAdmin = currentUser.role === 'admin' || isMaster;
+  const availableDepartments = useMemo(() => getStoredDepartments(), [tasks]);
 
   // Filter tasks
   const filteredTasks = useMemo(() => {
@@ -268,21 +270,21 @@ export const TaskBoard: React.FC<TaskBoardProps> = ({
             All Departments ({tasks.length})
           </button>
 
-          {(Object.keys(DEPARTMENT_CONFIG) as Department[]).map((dept) => {
-            const cfg = DEPARTMENT_CONFIG[dept];
-            const isSelected = selectedDept === dept;
-            const count = tasks.filter((t) => t.department === dept).length;
+          {availableDepartments.map((dept) => {
+            const cfg = getDepartmentConfig(dept.id);
+            const isSelected = selectedDept === dept.id;
+            const count = tasks.filter((t) => t.department === dept.id).length;
             return (
               <button
-                key={dept}
-                onClick={() => setSelectedDept(dept)}
+                key={dept.id}
+                onClick={() => setSelectedDept(dept.id as Department)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap border transition cursor-pointer ${
                   isSelected
                     ? `${cfg.bgLight} ${cfg.bgDark} ${cfg.border} ring-2 ring-indigo-500/30`
                     : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
                 }`}
               >
-                <span>{cfg.label}</span>
+                <span>{dept.label}</span>
                 <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/10 dark:bg-white/10 font-bold">
                   {count}
                 </span>

@@ -1,35 +1,72 @@
 // Web Audio API Synthesizer and Audio Chime Player for TBC Task Notifications
 
 let audioCtx: AudioContext | null = null;
+let cachedAudio: HTMLAudioElement | null = null;
 
-// Initialize or resume AudioContext upon user gesture
+// Initialize or resume AudioContext safely upon user gesture
 export function initAudio(): AudioContext | null {
   try {
     if (typeof window === 'undefined') return null;
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!audioCtx && AudioContextClass) {
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+
+    if (!AudioContextClass) return null;
+
+    if (!audioCtx || audioCtx.state === 'closed') {
       audioCtx = new AudioContextClass();
     }
-    if (audioCtx && audioCtx.state === 'suspended') {
+
+    if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
       audioCtx.resume().catch(() => {});
     }
+
     return audioCtx;
-  } catch {
+  } catch (e) {
+    console.warn('AudioContext initialization note:', e);
     return null;
   }
 }
 
-// Attach listener to auto-unlock AudioContext on first click or touch
+// Pre-create and unlock HTML5 audio element for instant playback on all mobile & desktop browsers
+export function getUnlockedHtmlAudio(): HTMLAudioElement | null {
+  if (typeof window === 'undefined') return null;
+  if (!cachedAudio) {
+    try {
+      cachedAudio = new Audio('/notification.wav');
+      cachedAudio.preload = 'auto';
+      cachedAudio.volume = 0.95;
+    } catch {
+      cachedAudio = null;
+    }
+  }
+  return cachedAudio;
+}
+
+// Global user interaction listener to auto-unlock audio capabilities on first click/touch
 if (typeof window !== 'undefined') {
-  const unlock = () => {
-    initAudio();
-    window.removeEventListener('click', unlock);
-    window.removeEventListener('keydown', unlock);
-    window.removeEventListener('touchstart', unlock);
+  const unlockAudio = () => {
+    try {
+      const ctx = initAudio();
+      if (ctx && (ctx.state === 'suspended' || ctx.state === 'interrupted')) {
+        ctx.resume().catch(() => {});
+      }
+      const audio = getUnlockedHtmlAudio();
+      if (audio && audio.paused && audio.readyState < 2) {
+        audio.load();
+      }
+    } catch {}
   };
-  window.addEventListener('click', unlock, { once: true });
-  window.addEventListener('keydown', unlock, { once: true });
-  window.addEventListener('touchstart', unlock, { once: true });
+
+  window.addEventListener('click', unlockAudio, { passive: true, once: false });
+  window.addEventListener('keydown', unlockAudio, { passive: true, once: false });
+  window.addEventListener('touchstart', unlockAudio, { passive: true, once: false });
+  window.addEventListener('pointerdown', unlockAudio, { passive: true, once: false });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      unlockAudio();
+    }
+  });
 }
 
 // Sound enabled preference in localStorage
@@ -41,69 +78,117 @@ export function isSoundEnabled(): boolean {
 export function setSoundEnabled(enabled: boolean): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem('tbc_sound_enabled', enabled ? 'true' : 'false');
+  if (enabled) {
+    initAudio();
+  }
 }
 
 /**
- * Plays a melodious, professional notification music chime (E major bell chord)
- * E5 (659Hz) -> G#5 (831Hz) -> B5 (988Hz) -> E6 (1319Hz)
+ * Fallback to HTML5 audio element with safety reset
  */
-export function playNotificationSound(): void {
-  if (!isSoundEnabled()) return;
+export function playHtml5AudioFallback(): void {
+  try {
+    const audio = getUnlockedHtmlAudio();
+    if (audio) {
+      audio.currentTime = 0;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('HTML5 Audio playback note:', err);
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('HTML5 Audio fallback execution error:', e);
+  }
+}
+
+/**
+ * Synthesizes a melodious, crystal-clear notification music chime (E major ascending bell chord)
+ * E5 (659Hz) -> G#5 (831Hz) -> B5 (988Hz) -> E6 (1319Hz)
+ * Uses lookahead timestamping so events are NEVER scheduled in the past.
+ */
+function playWebAudioChime(ctx: AudioContext): void {
+  try {
+    // Lookahead offset of 0.05s guarantees strictly positive scheduling
+    const now = ctx.currentTime + 0.05;
+
+    // Master gain node with soft limiter to prevent distortion and maximize clarity
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.85, now);
+    masterGain.connect(ctx.destination);
+
+    const notes = [
+      { freq: 659.25, time: 0.00, dur: 0.45, gain: 0.45 }, // E5
+      { freq: 830.61, time: 0.12, dur: 0.50, gain: 0.50 }, // G#5
+      { freq: 987.77, time: 0.24, dur: 0.55, gain: 0.55 }, // B5
+      { freq: 1318.51, time: 0.36, dur: 0.85, gain: 0.65 }, // E6 Crystal chime
+    ];
+
+    notes.forEach((note) => {
+      const osc = ctx.createOscillator();
+      const overtone = ctx.createOscillator();
+      const noteGain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(note.freq, now + note.time);
+
+      overtone.type = 'triangle';
+      overtone.frequency.setValueAtTime(note.freq * 2, now + note.time);
+
+      const startTime = now + note.time;
+      const attackTime = startTime + 0.03;
+      const endTime = startTime + note.dur;
+
+      noteGain.gain.setValueAtTime(0.0001, startTime);
+      noteGain.gain.linearRampToValueAtTime(note.gain, attackTime);
+      noteGain.gain.exponentialRampToValueAtTime(0.0001, endTime);
+
+      osc.connect(noteGain);
+      overtone.connect(noteGain);
+      noteGain.connect(masterGain);
+
+      osc.start(startTime);
+      overtone.start(startTime);
+      osc.stop(endTime + 0.05);
+      overtone.stop(endTime + 0.05);
+    });
+  } catch (err) {
+    console.warn('Web Audio synthesis error, falling back to HTML5 audio:', err);
+    playHtml5AudioFallback();
+  }
+}
+
+/**
+ * Plays the notification music chime.
+ * If force is true (e.g. from user clicking "Test Chime" or "Music ON"),
+ * it plays regardless of whether sound was previously disabled.
+ */
+export function playNotificationSound(force = false): void {
+  if (!force && !isSoundEnabled()) return;
 
   try {
     const ctx = initAudio();
-    if (ctx && ctx.state !== 'suspended') {
-      const now = ctx.currentTime;
-      const notes = [
-        { freq: 659.25, time: 0.00, dur: 0.45, gain: 0.30 }, // E5
-        { freq: 830.61, time: 0.12, dur: 0.50, gain: 0.35 }, // G#5
-        { freq: 987.77, time: 0.24, dur: 0.55, gain: 0.40 }, // B5
-        { freq: 1318.51, time: 0.36, dur: 0.65, gain: 0.45 }, // E6 Crystal chime
-      ];
-
-      notes.forEach((note) => {
-        const osc = ctx.createOscillator();
-        const overtone = ctx.createOscillator();
-        const gainNode = ctx.createGain();
-
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(note.freq, now + note.time);
-
-        overtone.type = 'triangle';
-        overtone.frequency.setValueAtTime(note.freq * 2, now + note.time);
-
-        const startTime = now + note.time;
-        const endTime = startTime + note.dur;
-
-        gainNode.gain.setValueAtTime(0.001, startTime);
-        gainNode.gain.linearRampToValueAtTime(note.gain, startTime + 0.02);
-        gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
-
-        osc.connect(gainNode);
-        overtone.connect(gainNode);
-        gainNode.connect(ctx.destination);
-
-        osc.start(startTime);
-        overtone.start(startTime);
-        osc.stop(endTime);
-        overtone.stop(endTime);
-      });
-      return;
+    if (ctx) {
+      if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+        ctx.resume()
+          .then(() => {
+            playWebAudioChime(ctx);
+          })
+          .catch(() => {
+            playHtml5AudioFallback();
+          });
+        return;
+      } else if (ctx.state === 'running') {
+        playWebAudioChime(ctx);
+        return;
+      }
     }
   } catch (err) {
-    console.warn('Web Audio synthesis error, attempting HTML5 Audio fallback:', err);
+    console.warn('Audio playback error:', err);
   }
 
-  // Fallback: HTML5 Audio
-  try {
-    const audio = new Audio('/notification.wav');
-    audio.volume = 0.8;
-    audio.play().catch(() => {
-      // Autoplay restriction or user hasn't interacted with page yet
-    });
-  } catch {
-    // Graceful silence if browser blocks audio
-  }
+  playHtml5AudioFallback();
 }
 
 /**

@@ -156,6 +156,31 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Right Action Tools: Focused on Notifications */}
             <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Quick Notification Music Sound Toggle & Test */}
+              <button
+                type="button"
+                onClick={onToggleSound}
+                className={`p-2 rounded-xl transition cursor-pointer border flex items-center gap-1.5 ${
+                  isSoundOn
+                    ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 hover:bg-amber-100'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
+                }`}
+                title={
+                  isSoundOn
+                    ? 'Notification Music: Active (Click to Mute / Test)'
+                    : 'Notification Music: Muted (Click to Enable)'
+                }
+              >
+                {isSoundOn ? (
+                  <Volume2 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                ) : (
+                  <VolumeX className="w-4 h-4 text-slate-400" />
+                )}
+                <span className="hidden md:inline text-[11px] font-bold">
+                  {isSoundOn ? 'Music ON' : 'Muted'}
+                </span>
+              </button>
+
               {/* Notification Bell Center Button */}
               <div className="relative" ref={notifRef}>
                 <button
